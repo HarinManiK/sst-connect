@@ -23,20 +23,34 @@ projects (set each one's "Root Directory" accordingly).
 2. Open the SQL Editor and run the files in `supabase/migrations/` **in
    order** (`0001` through `0005`). Each is idempotent (`if not exists` /
    `on conflict do nothing`), so re-running is safe.
-3. Go to **Authentication -> Providers -> Email** and decide whether to
-   require email confirmation on signup:
-   - **On** (recommended): students confirm via a real inbox before they can
-     log in. Works for personal emails too.
-   - **Off**: frictionless signup during the open bootstrap window, at the
-     cost of not knowing if the email is real.
+3. Set up Google sign-in, since students log in with **Google only** (no
+   password, no email/password form):
+   - In [Google Cloud Console](https://console.cloud.google.com), create an
+     OAuth 2.0 Client ID (Web application type). You'll need this even if
+     you don't otherwise use GCP -- it's free.
+   - In Supabase, go to **Authentication -> Providers -> Google**, and grab
+     the **Callback URL (for OAuth)** shown there (looks like
+     `https://<project-ref>.supabase.co/auth/v1/callback`).
+   - Paste that URL into the Google Cloud OAuth client's **Authorized
+     redirect URIs**.
+   - Paste the Google Client ID and Client Secret back into Supabase's
+     Google provider settings, then enable the provider.
 4. Go to **Authentication -> URL Configuration** and set:
    - **Site URL**: your production `apps/web` URL (e.g.
      `https://sst-connect.vercel.app`)
    - **Redirect URLs**: add `https://<your-web-app-url>/auth/callback` (and
-     `http://localhost:3000/auth/callback` for local dev) -- this is required
-     for the "link your Scaler email" flow on the profile page to work.
+     `http://localhost:3000/auth/callback` for local dev) -- this is the
+     route Supabase sends the browser back to after Google sign-in
+     completes, and it's also reused for the "link your Scaler email" flow
+     on the profile page.
 5. Grab three values from **Project Settings -> API**: the project URL, the
    `anon` public key, and the `service_role` secret key.
+
+Any Google account works at signup (personal Gmail is fine during the open
+bootstrap window) -- students without their Scaler mail yet just self-report
+their batch, same as before. There's no separate "confirm your email" step
+to configure since Google has already verified the address by the time
+Supabase sees it.
 
 Storage buckets (`post-images`, `avatars`) and their policies are created by
 migration `0004`, so no manual Storage setup is needed.
