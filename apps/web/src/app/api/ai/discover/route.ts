@@ -1,0 +1,121 @@
+import { NextResponse } from "next/server";
+import Anthropic from "@anthropic-ai/sdk";
+import { createClient } from "@/lib/supabase/server";
+
+type ParsedFilters = {
+  batch: number | null;
+  intent: "friends" | "dating" | "either" | null;
+  interest_keywords: string[];
+  free_text_keywords: string[];
+};
+
+export async function POST(request: Request) {
+  const { query } = await request.json();
+  if (!query || typeof query !== "string") {
+    return NextResponse.json({ error: "query required" }, { status: 400 });
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
+  }
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const message = await anthropic.messages.create({
+    model: "claude-haiku-4-5",
+    max_tokens: 300,
+    tools: [
+      {
+        name: "extract_filters",
+        description: "Extract structured search filters from a natural-language 'find people like X' request.",
+        input_schema: {
+          type: "object",
+          properties: {
+            batch: { type: ["integer", "null"], description: "Batch number if mentioned (1-4), else null" },
+            intent: {
+              type: ["string", "null"],
+              enum: ["friends", "dating", "either", null],
+              description: "What kind of connection they're after, if stated",
+            },
+            interest_keywords: {
+              type: "array",
+              items: { type: "string" },
+              description: "Interest/hobby/skill keywords mentioned, normalized (e.g. 'competitive programming', 'badminton')",
+            },
+            free_text_keywords: {
+              type: "array",
+              items: { type: "string" },
+              description: "Other descriptive words worth loosely matching against bio (e.g. 'night owl', 'indie music')",
+            },
+          },
+          required: ["batch", "intent", "interest_keywords", "free_text_keywords"],
+        },
+      },
+    ],
+    tool_choice: { type: "tool", name: "extract_filters" },
+    messages: [{ role: "user", content: query }],
+  });
+
+  const toolUse = message.content.find((c) => c.type === "tool_use");
+  const filters =
+    toolUse?.type === "tool_use" ? (toolUse.input as ParsedFilters) : {
+      batch: null,
+      intent: null,
+      interest_keywords: [],
+      free_text_keywords: [],
+    };
+
+  let profileQuery = supabase
+    .from("profiles")
+    .select(
+      "id, display_name, batch, branch, bio, avatar_url, intent, profile_interests(interests(name))"
+    )
+    .eq("discoverable", true)
+    .is("deleted_at", null)
+    .neq("id", user.id)
+    .limit(100);
+
+  if (filters.batch) profileQuery = profileQuery.eq("batch", filters.batch);
+  if (filters.intent) profileQuery = profileQuery.in("intent", [filters.intent, "either"]);
+
+  const { data: candidates } = await profileQuery;
+
+  type Candidate = {
+    id: string;
+    display_name: string;
+    batch: number | null;
+    branch: string | null;
+    bio: string | null;
+    avatar_url: string | null;
+    intent: string;
+    profile_interests: { interests: { name: string } | null }[];
+  };
+
+  const scored = ((candidates as unknown as Candidate[]) ?? []).map((c) => {
+    const interestNames = c.profile_interests
+      .map((pi) => pi.interests?.name?.toLowerCase())
+      .filter(Boolean) as string[];
+
+    const interestMatches = filters.interest_keywords.filter((kw) =>
+      interestNames.some((name) => name.includes(kw.toLowerCase()) || kw.toLowerCase().includes(name))
+    ).length;
+
+    const bioText = (c.bio ?? "").toLowerCase();
+    const freeTextMatches = filters.free_text_keywords.filter((kw) =>
+      bioText.includes(kw.toLowerCase())
+    ).length;
+
+    return { ...c, score: interestMatches * 2 + freeTextMatches };
+  });
+
+  const ranked = scored
+    .filter((c) => filters.interest_keywords.length + filters.free_text_keywords.length === 0 || c.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 20);
+
+  return NextResponse.json({ filters, results: ranked });
+}
