@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 
 export type ProfileFormState = { error?: string; success?: string } | undefined;
@@ -53,9 +54,10 @@ export async function linkCollegeEmail(
   }
 
   const supabase = await createClient();
+  const origin = (await headers()).get("origin");
   const { error } = await supabase.auth.updateUser(
     { email },
-    { emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback` }
+    { emailRedirectTo: `${origin}/auth/callback?next=/profile` }
   );
 
   if (error) return { error: error.message };

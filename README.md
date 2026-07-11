@@ -3,236 +3,276 @@
 Mobile-web PWA for Scaler School of Technology students — public feed with
 AI-categorized posts, friend requests, 1:1 chat, and an AI-powered
 conversational "find people like X" discovery tool. Plus a separate,
-single-admin panel (passwordless, gated to one fixed email) for manual
-account verification/cleanup and content moderation.
+single-admin panel for account verification/cleanup and moderation, hidden
+behind a secret URL.
 
-## Repo layout
+## How the pieces fit together
 
-```
-apps/web      Student-facing PWA (Next.js, deployed to Vercel)
-apps/admin    Admin panel (Next.js, deployed to Vercel, separate project)
-supabase/     SQL migrations -- the source of truth for the database schema
-```
+| Piece | What it is | Where it runs |
+|---|---|---|
+| `apps/web` | The student app (Next.js PWA) | Vercel (project #1) |
+| `apps/admin` | Your admin panel (Next.js) | Vercel (project #2) |
+| `supabase/` | Database schema (SQL migrations) | Supabase (Postgres + Auth + Realtime + Storage) |
+| AI features | Post categorization + discovery chat | build.nvidia.com (Llama 3.3 70B, free tier) |
+| Sign-in | "Continue with Google" for students; Google for the admin too | Google Cloud (one free OAuth client) |
 
-Both apps are one npm workspace, but deploy as two independent Vercel
-projects (set each one's "Root Directory" accordingly).
+**Follow the parts in order.** They're arranged so you never have to come
+back and redo an earlier step — each part only needs things you already
+have by the time you reach it.
 
-## 1. Create the Supabase project
+Accounts you'll need (all free): [supabase.com](https://supabase.com),
+[vercel.com](https://vercel.com), [build.nvidia.com](https://build.nvidia.com),
+and a Google account for [console.cloud.google.com](https://console.cloud.google.com).
 
-### 1.1 Create the project and run migrations
+---
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. Open the SQL Editor and run the files in `supabase/migrations/` **in
-   order** (`0001` through `0005`). Each is idempotent (`if not exists` /
-   `on conflict do nothing`), so re-running is safe.
+## Part 1 — Supabase (database)
 
-### 1.2 Set up Google sign-in
+### 1.1 Create the project and run the migrations
 
-Students log in with **Google only** -- no password, no email/password form.
-This needs two things talking to each other: a Google Cloud "OAuth client"
-(so Google knows it's OK to let people sign into your app) and a matching
-setting in Supabase. Do it in this exact order, since each step needs
-something copied from the previous one.
+1. At [supabase.com](https://supabase.com), create a project (any name,
+   region closest to Bengaluru, e.g. Mumbai).
+2. In the left sidebar, open **SQL Editor**.
+3. In this repo, open `supabase/migrations/0001_init.sql`, copy the whole
+   file, paste it into the SQL editor, and click **Run**. You should see
+   "Success. No rows returned".
+4. Repeat for `0002`, `0003`, `0004`, `0005`, and `0006` — **in that
+   order**. All six are safe to re-run if you're not sure whether one
+   already ran.
 
-**1.2a -- Grab your Supabase project's callback URL**
+### 1.2 Copy your three keys
 
-1. In the Supabase dashboard (your project), click **Authentication** in the
-   left sidebar.
-2. Find **Sign In / Providers** (or just **Providers** -- label varies by
-   dashboard version) and click **Google** in the list of providers.
-3. Toggle **Enable Sign in with Google** on.
-4. You'll see a field labeled **Callback URL (for OAuth)** -- it looks like
-   `https://abcdefgh.supabase.co/auth/v1/callback`. Copy this whole URL
-   somewhere (Notepad, a scratch note) -- you need it in the next step.
-5. Leave this Supabase tab open on this page. Don't fill in Client ID/Secret
-   yet -- you don't have them.
+1. In the left sidebar, click **Project Settings** (gear icon), then
+   **API** (sometimes under "Configuration").
+2. Copy these three values into a scratch note — you'll paste them into
+   Vercel in Parts 3 and 4:
+   - **Project URL** — like `https://abcdefgh.supabase.co`
+   - **anon / public key** — a long string starting `eyJ...`
+   - **service_role / secret key** — also `eyJ...`. This one bypasses all
+     security rules. Never share it, never commit it, never put it in
+     anything that starts with `NEXT_PUBLIC_`.
 
-**1.2b -- Create the Google OAuth client**
+### 1.3 One auth setting
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com) and
-   sign in with any Google account (your own is fine).
-2. Top-left, next to the Google Cloud logo, click the project dropdown ->
-   **New Project**. Name it something like `sst-connect`, click **Create**,
-   then make sure it's selected in that same dropdown once it's done.
-3. In the search bar at the top, type **OAuth consent screen** and open it.
-4. Choose **External** as the user type, click **Create**.
-5. Fill in:
-   - **App name**: `SST Connect`
-   - **User support email**: your email
-   - **Developer contact email**: your email (bottom of the page)
-   Click **Save and Continue** through the "Scopes" page (leave defaults,
-   click through) and the "Test users" page (see the warning below first).
-6. **Important -- don't skip this**: while this consent screen is in
-   **Testing** status, Google will only let you sign in if you're explicitly
-   added as a test user (max 100 people) -- anyone else trying to sign in
-   gets an "Access blocked" error. Once you're happy it works for you, go
-   back to the OAuth consent screen page and click **Publish App** so *any*
-   Google account can sign in, not just test users. (Google may show a
-   "verification" nudge for a Public app requesting sensitive scopes -- this
-   app only requests basic profile/email, which doesn't require Google's
-   verification review, so Publish should just work.)
-7. In the left sidebar, click **Credentials**.
-8. Click **+ Create Credentials** (top) -> **OAuth client ID**.
-9. **Application type**: `Web application`. Name it `SST Connect Web`.
-10. Under **Authorized JavaScript origins**, click **+ Add URI** and add,
-    one at a time:
-    - `http://localhost:3000` (for local dev)
-    - your Supabase project URL, e.g. `https://abcdefgh.supabase.co`
-    - your production `apps/web` URL once you have it from Vercel (you can
-      come back and add this after section 3, "Deploy apps/web," below)
-11. Under **Authorized redirect URIs**, click **+ Add URI** and paste the
-    Supabase callback URL you copied in step 1.2a
-    (`https://abcdefgh.supabase.co/auth/v1/callback`).
-12. Click **Create**. A popup shows your **Client ID** and **Client
-    Secret** -- copy both somewhere safe. (You can always find them again
-    later under Credentials -> click the client's name.)
+1. Left sidebar → **Authentication** → find the **Email** provider settings
+   (under "Sign In / Providers" or "Providers", depending on dashboard
+   version).
+2. Turn **off** "Secure email change" (if it's on). With it on, a student
+   linking their Scaler email would have to confirm from *both* their old
+   personal inbox *and* the new Scaler inbox; off means just the Scaler
+   inbox, which is the one we actually care about proving they own.
 
-**1.2c -- Finish the Supabase side**
+That's all for Supabase for now. (Google sign-in setup comes in Part 5,
+after Vercel gives you your app URLs.)
 
-1. Back in the Supabase tab from step 1.2a, paste the **Client ID** and
-   **Client Secret** into the matching fields on the Google provider page.
-2. Click **Save**.
+---
 
-That's it for Google -- test it later once `apps/web` is deployed (section 3
-below) by opening the app and clicking "Continue with Google."
-
-### 1.3 Set the site URL and redirect URLs
-
-1. Still under **Authentication**, click **URL Configuration**.
-2. **Site URL**: your production `apps/web` URL (e.g.
-   `https://sst-connect.vercel.app` -- if you don't have this yet because
-   you haven't deployed to Vercel, come back and set it after section 3
-   below, then re-save).
-3. **Redirect URLs**: click to add, and add both of these (one per line or
-   one at a time, depending on the UI):
-   - `https://<your-web-app-url>/auth/callback`
-   - `http://localhost:3000/auth/callback`
-
-   This is the page inside *our* app (not Supabase's) that Supabase sends
-   the browser back to right after Google sign-in finishes -- it's also
-   reused later for the "link your Scaler email" feature on the profile
-   page, so it needs to be here regardless.
-
-### 1.4 Grab your API keys
-
-1. Click the gear icon / **Project Settings** in the left sidebar, then
-   **API** (sometimes nested under **Configuration**).
-2. Copy three values -- you'll paste these into Vercel environment
-   variables later:
-   - **Project URL** (e.g. `https://abcdefgh.supabase.co`)
-   - **anon / public key** (a long string starting with `eyJ...`)
-   - **service_role / secret key** (also starts with `eyJ...` -- keep this
-     one private, never put it in client-side code or commit it anywhere)
-
-Any Google account works at signup (personal Gmail is fine during the open
-bootstrap window) -- students without their Scaler mail yet just self-report
-their batch, same as before. There's no separate "confirm your email" step
-to configure since Google has already verified the address by the time
-Supabase sees it.
-
-Storage buckets (`post-images`, `avatars`) and their policies are created by
-migration `0004`, so no manual Storage setup is needed.
-
-## 2. Get a build.nvidia.com API key
-
-Used for feed post categorization and the AI discovery chat, running on
-Llama 3.3 70B Instruct (free tier) rather than a paid model provider:
+## Part 2 — NVIDIA API key (the AI)
 
 1. Sign in at [build.nvidia.com](https://build.nvidia.com).
-2. Open any model page (e.g. Llama 3.3 70B Instruct) and use "Get API Key".
-3. That's `NVIDIA_API_KEY` below. The free tier has rate limits (not
-   unlimited), so if the discovery chat or categorization start failing
-   under real load, that's the first thing to check -- either wait out the
-   rate limit or move to a paid NVIDIA tier / different provider.
+2. Open any model page — e.g. search for **Llama 3.3 70B Instruct**.
+3. Click **Get API Key** and copy it into your scratch note.
 
-Both AI routes go through `src/lib/ai/client.ts`, which wraps the `openai`
-SDK pointed at NVIDIA's OpenAI-compatible endpoint. Since open-weight models
-served this way don't reliably support native function/tool-calling, both
-routes prompt for plain JSON and parse it themselves rather than depending
-on structured tool-call output -- worth knowing if you swap in a different
-model later and responses stop parsing.
+The free tier is rate-limited. If the discovery chat or post categorization
+ever starts failing under real load, this is the first suspect — wait it
+out or upgrade. To use a different hosted model later, set the optional
+`NVIDIA_MODEL` env var (default: `meta/llama-3.3-70b-instruct`).
 
-## 3. Deploy `apps/web` to Vercel
+---
 
-1. Import the GitHub repo into Vercel as a new project.
-2. Set **Root Directory** to `apps/web`.
-3. Add environment variables (copy from `apps/web/.env.local.example`):
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - `NVIDIA_API_KEY`
-   - `NEXT_PUBLIC_SITE_URL` -- set this to the Vercel URL Vercel assigns you
-     (you may need to deploy once first, then add this and redeploy)
-4. Deploy. Every push to your main branch auto-redeploys.
-5. Add `apps/web/public/icons/icon-192.png` and `icon-512.png` (square PNGs,
-   brand-blue background) at some point -- the PWA manifest references them
-   for the home-screen icon; without them the app still works, it just won't
-   have a custom icon when installed.
+## Part 3 — Deploy the student app to Vercel
 
-To actually install as a "native-feeling" app: open the deployed URL on a
-phone and use the browser's "Add to Home Screen" option.
+1. At [vercel.com](https://vercel.com), click **Add New → Project** and
+   import the `sst-connect` GitHub repo.
+2. Before deploying, set **Root Directory** to `apps/web` (click **Edit**
+   next to Root Directory and pick the folder).
+3. Expand **Environment Variables** and add these four (values from your
+   scratch note):
 
-## 4. Deploy `apps/admin` to Vercel
+   | Name | Value |
+   |---|---|
+   | `NEXT_PUBLIC_SUPABASE_URL` | your Project URL |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the anon key |
+   | `SUPABASE_SERVICE_ROLE_KEY` | the service_role key |
+   | `NVIDIA_API_KEY` | your NVIDIA key |
 
-Deploy this as a **second, separate Vercel project** pointed at the same
-repo:
+4. Click **Deploy**, wait for it to finish, and note the URL it gives you
+   (like `https://sst-connect.vercel.app`). Write it in your scratch note
+   as the **web URL**.
 
-1. Import the repo again (or add another project from it).
+Don't open the app yet — sign-in won't work until Part 5. Every future
+`git push` to `master` redeploys automatically.
+
+> **PWA icons (whenever, not blocking):** drop `icon-192.png` and
+> `icon-512.png` (square PNGs) into `apps/web/public/icons/` and push, and
+> the app gets a proper home-screen icon when students install it.
+
+---
+
+## Part 4 — Deploy the admin panel to Vercel
+
+Same repo, second Vercel project:
+
+1. **Add New → Project**, import `sst-connect` again.
 2. Set **Root Directory** to `apps/admin`.
-3. Add environment variables (copy from `apps/admin/.env.local.example`):
-   - `SUPABASE_URL` (same project URL as `apps/web` -- no `NEXT_PUBLIC_`
-     prefix needed, nothing here reaches a browser bundle)
-   - `SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - `ADMIN_EMAIL` -- set this to `harin.25bcs10680@sst.scaler.com` (or
-     whichever address you want to be the one and only admin identity)
-   - `ADMIN_SITE_URL` -- the Vercel URL Vercel assigns this project (deploy
-     once first, then add this and redeploy)
-4. In the Supabase dashboard, under **Authentication -> URL Configuration ->
-   Redirect URLs**, add `https://<your-admin-app-url>/auth/callback` (and
-   `http://localhost:3000/auth/callback` for local dev). Without this, the
-   magic link won't be allowed to redirect back into the admin app.
-5. Deploy.
+3. Add these five environment variables:
 
-**How login works, by design**: there's no password and no visible login
-form. Visiting the deployed URL silently emails a one-time magic link to
-whatever `ADMIN_EMAIL` is set to, via Supabase Auth, and renders a blank
-page regardless of who's visiting -- anyone else who finds the URL sees
-nothing, and any dashboard route hit without a matching, authenticated
-session 404s instead of showing an access-denied page. For you, it's just:
-open the URL, check that inbox, click the link. Sessions persist via
-Supabase's normal refresh-token cookies, so you won't need to repeat this
-every visit.
+   | Name | Value |
+   |---|---|
+   | `SUPABASE_URL` | your Project URL (same as before) |
+   | `SUPABASE_ANON_KEY` | the anon key |
+   | `SUPABASE_SERVICE_ROLE_KEY` | the service_role key |
+   | `ADMIN_EMAIL` | `harin.25bcs10680@sst.scaler.com` |
+   | `ADMIN_ENTRY_SECRET` | a long random slug — see below |
 
-Consider also enabling Vercel's own "Deployment Protection" on this project
-as a second layer, since it's a sensitive surface.
+   `ADMIN_ENTRY_SECRET` is the hidden door. Make it long and unguessable
+   (e.g. run `openssl rand -hex 16`, or mash out 25+ random characters —
+   letters/numbers only, no spaces or slashes).
 
-## 5. Local development
+4. Deploy, and note this URL too (the **admin URL**).
+
+**How admin login works:** the admin app shows a 404 on every path — no
+login page, no trace it's anything at all. The one exception:
+`https://<admin-url>/<ADMIN_ENTRY_SECRET>` immediately bounces you to
+Google sign-in. Sign in with the `ADMIN_EMAIL` Google account and you land
+on the dashboard; any other Google account gets signed out and 404'd.
+**Bookmark the secret URL on your own devices** — that bookmark is
+effectively your key. If it ever leaks, change `ADMIN_ENTRY_SECRET` in
+Vercel and redeploy (the leaked path goes back to 404; your email check is
+still the real gate either way).
+
+---
+
+## Part 5 — Google sign-in
+
+You now have every URL this needs. One Google OAuth client covers both apps.
+
+### 5.1 Supabase side, first half
+
+1. Supabase dashboard → **Authentication** → **Sign In / Providers** (or
+   "Providers") → click **Google**.
+2. Toggle **Enable Sign in with Google** on.
+3. Copy the **Callback URL (for OAuth)** shown there — it looks like
+   `https://abcdefgh.supabase.co/auth/v1/callback`. Keep this tab open.
+
+### 5.2 Google Cloud Console
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com), sign
+   in, and create a **New Project** (top-left project dropdown → New
+   Project → name it `sst-connect` → Create → make sure it's selected).
+2. Search **"OAuth consent screen"** in the top search bar and open it.
+3. Choose **External**, click **Create**, then fill in:
+   - App name: `SST Connect`
+   - User support email: yours
+   - Developer contact email (bottom): yours
+   Click **Save and Continue** through the remaining screens (Scopes, Test
+   users — leave defaults).
+4. Search **"Credentials"** (under APIs & Services) → **+ Create
+   Credentials** → **OAuth client ID**:
+   - Application type: **Web application**
+   - Name: `SST Connect Web`
+   - **Authorized JavaScript origins** — add three, one at a time:
+     - your web URL (e.g. `https://sst-connect.vercel.app`)
+     - your admin URL
+     - `http://localhost:3000`
+   - **Authorized redirect URIs** — add exactly one: the Supabase callback
+     URL from step 5.1 (`https://abcdefgh.supabase.co/auth/v1/callback`)
+   - Click **Create**.
+5. A popup shows the **Client ID** and **Client Secret** — copy both. (Find
+   them again anytime under Credentials → click the client's name.)
+6. **Publish the app — easy to miss, breaks everything if skipped:** go
+   back to **OAuth consent screen** and click **Publish App** (status:
+   Testing → In production). While it says *Testing*, only Google accounts
+   you hand-list as "test users" can sign in — every other student gets an
+   "Access blocked" error. This app only asks for basic profile/email, so
+   publishing doesn't require Google's review process.
+
+### 5.3 Supabase side, second half
+
+1. Back in the Supabase tab from 5.1, paste the **Client ID** and **Client
+   Secret** into the Google provider's fields and click **Save**.
+
+---
+
+## Part 6 — Tell Supabase your app URLs
+
+1. Supabase dashboard → **Authentication** → **URL Configuration**.
+2. **Site URL**: your web URL (e.g. `https://sst-connect.vercel.app`).
+3. **Redirect URLs** — add all four:
+   - `https://<web-url>/auth/callback`
+   - `https://<admin-url>/auth/callback`
+   - `http://localhost:3000/auth/callback`
+   - `http://localhost:3001/auth/callback`
+
+   (The first two make sign-in work in production; the last two are for
+   local dev — web runs on port 3000, admin on 3001.)
+
+---
+
+## Part 7 — Test it
+
+Student app (on your phone, ideally):
+
+1. Open the web URL → you should land on a "Continue with Google" page.
+2. Sign in with any Google account → Google's account picker → you land on
+   the feed. Your name and photo should already be on the Profile tab.
+3. Make a post → it appears immediately; within a few seconds it picks up a
+   category chip (hot/tech/culture/general).
+4. Profile tab → link your Scaler email → confirmation lands in the Scaler
+   inbox → after clicking it, your profile shows "Verified" with the right
+   batch.
+5. "Add to Home Screen" from the browser menu installs it like an app.
+
+Admin panel:
+
+6. Open `https://<admin-url>/<your-ADMIN_ENTRY_SECRET>` → Google → you're
+   in the dashboard. Then confirm the stealth: open the bare admin URL in a
+   private/incognito window — it should 404.
+
+---
+
+## Local development
 
 ```bash
 npm install
 cp apps/web/.env.local.example apps/web/.env.local        # fill in values
 cp apps/admin/.env.local.example apps/admin/.env.local    # fill in values
 npm run dev:web     # http://localhost:3000
-npm run dev:admin   # http://localhost:3000 (different port if both running)
+npm run dev:admin   # http://localhost:3001
 ```
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause |
+|---|---|
+| Google shows **"Access blocked: This app has not completed verification"** or only your account works | Consent screen still in *Testing* — do step 5.6 (Publish App). |
+| Google shows **redirect_uri_mismatch** | The Supabase callback URL in Google's "Authorized redirect URIs" doesn't exactly match step 5.1's value. |
+| After Google sign-in you bounce back to the login page | Your app's `/auth/callback` URL is missing from Supabase → URL Configuration → Redirect URLs (Part 6). |
+| Admin secret URL shows 404 | `ADMIN_ENTRY_SECRET` in Vercel doesn't match what you typed, or you edited env vars without redeploying (Vercel → Deployments → Redeploy). |
+| Admin login loops to 404 after Google | You signed in with a Google account whose email ≠ `ADMIN_EMAIL`. |
+| Posts never get categorized | Bad/rate-limited `NVIDIA_API_KEY`; check the Vercel function logs for the web project. |
+| "Link your Scaler email" mail never arrives | Supabase's built-in mailer is heavily rate-limited (a few emails/hour). Fine for testing; before launch, plug a real SMTP provider into Supabase (Project Settings → Auth → SMTP). |
+| Everything 500s after Supabase was idle | Free-tier projects pause after ~1 week of inactivity — unpause from the Supabase dashboard (or upgrade to Pro before launch). |
+
+---
 
 ## Known gaps / next steps
 
-- **Post comments**: the schema and RLS policies exist (`post_comments`
-  table), but there's no UI to write or read comments yet -- only the count
-  shows on the feed.
-- **Verification deadline reminders**: the in-app countdown banner exists,
-  but there's no scheduled email/push reminder job yet (would need Resend or
-  similar wired into a cron -- e.g. a Vercel Cron Job hitting an API route).
-- **Embeddings-based discovery**: the AI discovery search currently uses
-  LLM-extracted structured filters (batch/intent/interest keywords) plus
-  keyword overlap ranking, not true semantic embeddings. Upgrading to
-  `pgvector` + an embeddings model would catch fuzzier matches (e.g. "night
-  owl" matching a bio that never uses that phrase) but needs an embeddings
-  API and a backfill pipeline -- a solid v2, not required for launch.
-- **Push notifications**: Web Push is mentioned in the plan but not wired
-  up; new messages/requests currently only show up when the app is open.
-- **Bulk invite-code flow**: batch admissions/onboarding lists aren't
-  integrated anywhere -- registration is fully open during the bootstrap
-  window by design, per the plan.
+- **Comments UI** — schema + permissions exist; feed shows counts, but
+  there's no screen to read/write comments yet.
+- **"For You" is just newest-first** — no personalization signal yet; the
+  category tabs are the real filter for now.
+- **Avatar upload** — Google profile photos come through automatically, but
+  there's no in-app photo upload yet (storage bucket + policies are ready).
+- **Push notifications** — new messages/requests only show while the app is
+  open.
+- **Duplicate accounts** — a student who signs up with a personal Google
+  account and later signs in directly with their Scaler Google account (instead
+  of using "link your Scaler email") gets two accounts; merge/cleanup is
+  manual via the admin panel.
+- **Deadline reminder emails** — the in-app countdown banner exists; a
+  scheduled reminder email (Vercel Cron + an email provider) doesn't.
+- **Deleted users' images** — deleting an account removes the user and
+  their rows, but uploaded images stay in Storage (orphaned, invisible).

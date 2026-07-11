@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { categorizePost } from "@/lib/ai/categorize";
 
 export async function createPost(content: string, imageUrl: string | null) {
   const supabase = await createClient();
@@ -21,13 +23,9 @@ export async function createPost(content: string, imageUrl: string | null) {
 
   if (error) throw new Error(error.message);
 
-  // Fire-and-forget: AI categorization shouldn't block the post from
-  // appearing immediately in "general"/"For You".
-  fetch(`${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/api/ai/categorize-post`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ postId: post.id }),
-  }).catch(() => {});
+  // Runs after the response is sent, so posting stays instant; the post
+  // just appears in "general" until the categorization lands.
+  after(() => categorizePost(post.id));
 
   revalidatePath("/feed");
 }

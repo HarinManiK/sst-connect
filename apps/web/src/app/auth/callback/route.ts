@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-// Supabase redirects here after a user confirms an email-change link (e.g.
-// linking their Scaler email from the profile page). Exchanges the auth
-// code for a session, which is what actually applies the new email --
-// the `sync_profile_from_auth_user` trigger then parses batch/year from it.
+// Supabase redirects here after Google sign-in and after a confirmed
+// email-change link (the "link your Scaler email" flow). Exchanges the
+// auth code for a session, then forwards to `next` (default: the feed).
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
@@ -14,5 +13,9 @@ export async function GET(request: Request) {
     await supabase.auth.exchangeCodeForSession(code);
   }
 
-  return NextResponse.redirect(`${origin}/profile`);
+  const rawNext = searchParams.get("next");
+  // only allow same-app paths -- never redirect off-site
+  const next = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/feed";
+
+  return NextResponse.redirect(`${origin}${next}`);
 }
