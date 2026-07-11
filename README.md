@@ -19,32 +19,110 @@ projects (set each one's "Root Directory" accordingly).
 
 ## 1. Create the Supabase project
 
+### 1.1 Create the project and run migrations
+
 1. Create a project at [supabase.com](https://supabase.com).
 2. Open the SQL Editor and run the files in `supabase/migrations/` **in
    order** (`0001` through `0005`). Each is idempotent (`if not exists` /
    `on conflict do nothing`), so re-running is safe.
-3. Set up Google sign-in, since students log in with **Google only** (no
-   password, no email/password form):
-   - In [Google Cloud Console](https://console.cloud.google.com), create an
-     OAuth 2.0 Client ID (Web application type). You'll need this even if
-     you don't otherwise use GCP -- it's free.
-   - In Supabase, go to **Authentication -> Providers -> Google**, and grab
-     the **Callback URL (for OAuth)** shown there (looks like
-     `https://<project-ref>.supabase.co/auth/v1/callback`).
-   - Paste that URL into the Google Cloud OAuth client's **Authorized
-     redirect URIs**.
-   - Paste the Google Client ID and Client Secret back into Supabase's
-     Google provider settings, then enable the provider.
-4. Go to **Authentication -> URL Configuration** and set:
-   - **Site URL**: your production `apps/web` URL (e.g.
-     `https://sst-connect.vercel.app`)
-   - **Redirect URLs**: add `https://<your-web-app-url>/auth/callback` (and
-     `http://localhost:3000/auth/callback` for local dev) -- this is the
-     route Supabase sends the browser back to after Google sign-in
-     completes, and it's also reused for the "link your Scaler email" flow
-     on the profile page.
-5. Grab three values from **Project Settings -> API**: the project URL, the
-   `anon` public key, and the `service_role` secret key.
+
+### 1.2 Set up Google sign-in
+
+Students log in with **Google only** -- no password, no email/password form.
+This needs two things talking to each other: a Google Cloud "OAuth client"
+(so Google knows it's OK to let people sign into your app) and a matching
+setting in Supabase. Do it in this exact order, since each step needs
+something copied from the previous one.
+
+**1.2a -- Grab your Supabase project's callback URL**
+
+1. In the Supabase dashboard (your project), click **Authentication** in the
+   left sidebar.
+2. Find **Sign In / Providers** (or just **Providers** -- label varies by
+   dashboard version) and click **Google** in the list of providers.
+3. Toggle **Enable Sign in with Google** on.
+4. You'll see a field labeled **Callback URL (for OAuth)** -- it looks like
+   `https://abcdefgh.supabase.co/auth/v1/callback`. Copy this whole URL
+   somewhere (Notepad, a scratch note) -- you need it in the next step.
+5. Leave this Supabase tab open on this page. Don't fill in Client ID/Secret
+   yet -- you don't have them.
+
+**1.2b -- Create the Google OAuth client**
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) and
+   sign in with any Google account (your own is fine).
+2. Top-left, next to the Google Cloud logo, click the project dropdown ->
+   **New Project**. Name it something like `sst-connect`, click **Create**,
+   then make sure it's selected in that same dropdown once it's done.
+3. In the search bar at the top, type **OAuth consent screen** and open it.
+4. Choose **External** as the user type, click **Create**.
+5. Fill in:
+   - **App name**: `SST Connect`
+   - **User support email**: your email
+   - **Developer contact email**: your email (bottom of the page)
+   Click **Save and Continue** through the "Scopes" page (leave defaults,
+   click through) and the "Test users" page (see the warning below first).
+6. **Important -- don't skip this**: while this consent screen is in
+   **Testing** status, Google will only let you sign in if you're explicitly
+   added as a test user (max 100 people) -- anyone else trying to sign in
+   gets an "Access blocked" error. Once you're happy it works for you, go
+   back to the OAuth consent screen page and click **Publish App** so *any*
+   Google account can sign in, not just test users. (Google may show a
+   "verification" nudge for a Public app requesting sensitive scopes -- this
+   app only requests basic profile/email, which doesn't require Google's
+   verification review, so Publish should just work.)
+7. In the left sidebar, click **Credentials**.
+8. Click **+ Create Credentials** (top) -> **OAuth client ID**.
+9. **Application type**: `Web application`. Name it `SST Connect Web`.
+10. Under **Authorized JavaScript origins**, click **+ Add URI** and add,
+    one at a time:
+    - `http://localhost:3000` (for local dev)
+    - your Supabase project URL, e.g. `https://abcdefgh.supabase.co`
+    - your production `apps/web` URL once you have it from Vercel (you can
+      come back and add this after section 3, "Deploy apps/web," below)
+11. Under **Authorized redirect URIs**, click **+ Add URI** and paste the
+    Supabase callback URL you copied in step 1.2a
+    (`https://abcdefgh.supabase.co/auth/v1/callback`).
+12. Click **Create**. A popup shows your **Client ID** and **Client
+    Secret** -- copy both somewhere safe. (You can always find them again
+    later under Credentials -> click the client's name.)
+
+**1.2c -- Finish the Supabase side**
+
+1. Back in the Supabase tab from step 1.2a, paste the **Client ID** and
+   **Client Secret** into the matching fields on the Google provider page.
+2. Click **Save**.
+
+That's it for Google -- test it later once `apps/web` is deployed (section 3
+below) by opening the app and clicking "Continue with Google."
+
+### 1.3 Set the site URL and redirect URLs
+
+1. Still under **Authentication**, click **URL Configuration**.
+2. **Site URL**: your production `apps/web` URL (e.g.
+   `https://sst-connect.vercel.app` -- if you don't have this yet because
+   you haven't deployed to Vercel, come back and set it after section 3
+   below, then re-save).
+3. **Redirect URLs**: click to add, and add both of these (one per line or
+   one at a time, depending on the UI):
+   - `https://<your-web-app-url>/auth/callback`
+   - `http://localhost:3000/auth/callback`
+
+   This is the page inside *our* app (not Supabase's) that Supabase sends
+   the browser back to right after Google sign-in finishes -- it's also
+   reused later for the "link your Scaler email" feature on the profile
+   page, so it needs to be here regardless.
+
+### 1.4 Grab your API keys
+
+1. Click the gear icon / **Project Settings** in the left sidebar, then
+   **API** (sometimes nested under **Configuration**).
+2. Copy three values -- you'll paste these into Vercel environment
+   variables later:
+   - **Project URL** (e.g. `https://abcdefgh.supabase.co`)
+   - **anon / public key** (a long string starting with `eyJ...`)
+   - **service_role / secret key** (also starts with `eyJ...` -- keep this
+     one private, never put it in client-side code or commit it anywhere)
 
 Any Google account works at signup (personal Gmail is fine during the open
 bootstrap window) -- students without their Scaler mail yet just self-report
