@@ -3,8 +3,8 @@
 Mobile-web PWA for Scaler School of Technology students — public feed with
 AI-categorized posts, friend requests, 1:1 chat, and an AI-powered
 conversational "find people like X" discovery tool. Plus a separate,
-password-protected admin panel for manual account verification/cleanup and
-content moderation.
+single-admin panel (passwordless, gated to one fixed email) for manual
+account verification/cleanup and content moderation.
 
 ## Repo layout
 
