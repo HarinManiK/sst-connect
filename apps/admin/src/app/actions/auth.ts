@@ -7,10 +7,12 @@ import { createSessionValue, SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS } from
 export type LoginState = { error?: string } | undefined;
 
 export async function login(_prev: LoginState, formData: FormData): Promise<LoginState> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
 
-  if (password !== process.env.ADMIN_PASSWORD) {
-    return { error: "Incorrect password." };
+  const allowedEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  if (!allowedEmail || email !== allowedEmail || password !== process.env.ADMIN_PASSWORD) {
+    return { error: "Incorrect email or password." };
   }
 
   const cookieStore = await cookies();

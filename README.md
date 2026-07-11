@@ -91,8 +91,9 @@ repo:
    - `SUPABASE_URL` (same project URL as above -- note: no `NEXT_PUBLIC_`
      prefix, this app has no client-side Supabase calls)
    - `SUPABASE_SERVICE_ROLE_KEY`
-   - `ADMIN_PASSWORD` -- pick something strong, this is the only thing
-     gating account deletion and moderation actions
+   - `ADMIN_EMAIL` -- the only email allowed to log in (yours)
+   - `ADMIN_PASSWORD` -- pick something strong, this plus `ADMIN_EMAIL` are
+     the only things gating account deletion and moderation actions
    - `ADMIN_SESSION_SECRET` -- generate with `openssl rand -hex 32`
 4. Deploy. Consider password-protecting this Vercel deployment further via
    Vercel's own "Deployment Protection" setting, since it's a sensitive
