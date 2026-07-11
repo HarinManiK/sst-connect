@@ -1,34 +1,25 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createSessionValue, SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS } from "@/lib/session";
+import { createClient } from "@/lib/supabase/server";
 
-export type LoginState = { error?: string } | undefined;
+// Always targets the one fixed admin address -- there's no email input
+// anywhere in the UI, so there's nothing for a visitor to fill in or probe.
+export async function requestAccess() {
+  const supabase = await createClient();
+  const email = process.env.ADMIN_EMAIL;
+  if (!email) return;
 
-export async function login(_prev: LoginState, formData: FormData): Promise<LoginState> {
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const password = String(formData.get("password") ?? "");
-
-  const allowedEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  if (!allowedEmail || email !== allowedEmail || password !== process.env.ADMIN_PASSWORD) {
-    return { error: "Incorrect email or password." };
-  }
-
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, createSessionValue(), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: SESSION_MAX_AGE_SECONDS,
-    path: "/",
+  await supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: `${process.env.ADMIN_SITE_URL}/auth/callback` },
   });
-
-  redirect("/users");
+  // Errors (rate limits, misconfiguration) are intentionally swallowed --
+  // the page never reveals whether anything happened.
 }
 
 export async function logout() {
-  const cookieStore = await cookies();
-  cookieStore.delete(SESSION_COOKIE_NAME);
-  redirect("/login");
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect("/");
 }

@@ -88,16 +88,32 @@ repo:
 1. Import the repo again (or add another project from it).
 2. Set **Root Directory** to `apps/admin`.
 3. Add environment variables (copy from `apps/admin/.env.local.example`):
-   - `SUPABASE_URL` (same project URL as above -- note: no `NEXT_PUBLIC_`
-     prefix, this app has no client-side Supabase calls)
+   - `SUPABASE_URL` (same project URL as `apps/web` -- no `NEXT_PUBLIC_`
+     prefix needed, nothing here reaches a browser bundle)
+   - `SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
-   - `ADMIN_EMAIL` -- the only email allowed to log in (yours)
-   - `ADMIN_PASSWORD` -- pick something strong, this plus `ADMIN_EMAIL` are
-     the only things gating account deletion and moderation actions
-   - `ADMIN_SESSION_SECRET` -- generate with `openssl rand -hex 32`
-4. Deploy. Consider password-protecting this Vercel deployment further via
-   Vercel's own "Deployment Protection" setting, since it's a sensitive
-   surface.
+   - `ADMIN_EMAIL` -- set this to `harin.25bcs10680@sst.scaler.com` (or
+     whichever address you want to be the one and only admin identity)
+   - `ADMIN_SITE_URL` -- the Vercel URL Vercel assigns this project (deploy
+     once first, then add this and redeploy)
+4. In the Supabase dashboard, under **Authentication -> URL Configuration ->
+   Redirect URLs**, add `https://<your-admin-app-url>/auth/callback` (and
+   `http://localhost:3000/auth/callback` for local dev). Without this, the
+   magic link won't be allowed to redirect back into the admin app.
+5. Deploy.
+
+**How login works, by design**: there's no password and no visible login
+form. Visiting the deployed URL silently emails a one-time magic link to
+whatever `ADMIN_EMAIL` is set to, via Supabase Auth, and renders a blank
+page regardless of who's visiting -- anyone else who finds the URL sees
+nothing, and any dashboard route hit without a matching, authenticated
+session 404s instead of showing an access-denied page. For you, it's just:
+open the URL, check that inbox, click the link. Sessions persist via
+Supabase's normal refresh-token cookies, so you won't need to repeat this
+every visit.
+
+Consider also enabling Vercel's own "Deployment Protection" on this project
+as a second layer, since it's a sensitive surface.
 
 ## 5. Local development
 

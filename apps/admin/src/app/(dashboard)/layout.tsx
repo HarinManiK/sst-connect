@@ -1,7 +1,22 @@
+import { notFound } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import { isAdminEmail } from "@/lib/admin-email";
 import { logout } from "@/app/actions/auth";
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Anyone else who ends up here -- expired session, guessed a URL, whatever
+  // -- gets a plain 404, not a "you're not allowed" page that confirms this
+  // is an access-gated admin system.
+  if (!user || !isAdminEmail(user.email)) {
+    notFound();
+  }
+
   return (
     <div className="flex min-h-screen">
       <aside className="w-56 shrink-0 border-r border-slate-200 bg-white p-4">
