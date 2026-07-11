@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { ai, AI_MODEL, extractJson } from "@/lib/ai/client";
 
 const CATEGORIES = ["hot", "tech", "culture", "general"] as const;
 
@@ -26,26 +26,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ category: "general" });
   }
 
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-  const message = await anthropic.messages.create({
-    model: "claude-haiku-4-5",
+  const completion = await ai.chat.completions.create({
+    model: AI_MODEL,
     max_tokens: 100,
-    tools: [
-      {
-        name: "categorize",
-        description: "Classify a campus social post into one feed category.",
-        input_schema: {
-          type: "object",
-          properties: {
-            category: { type: "string", enum: CATEGORIES },
-            confidence: { type: "number", description: "0 to 1" },
-          },
-          required: ["category", "confidence"],
-        },
-      },
-    ],
-    tool_choice: { type: "tool", name: "categorize" },
+    temperature: 0,
     messages: [
       {
         role: "user",
@@ -55,20 +39,25 @@ export async function POST(request: Request) {
 - "culture": events, fests, clubs, sports, social activities
 - "general": anything else (default/fallback)
 
-Post: """${post.content}"""`,
+Post: """${post.content}"""
+
+Respond with ONLY a JSON object, no other text, in exactly this shape:
+{"category": "hot" | "tech" | "culture" | "general", "confidence": 0.0 to 1.0}`,
       },
     ],
   });
 
-  const toolUse = message.content.find((c) => c.type === "tool_use");
-  const input = toolUse?.type === "tool_use" ? (toolUse.input as { category: string; confidence: number }) : null;
-  const category = CATEGORIES.includes(input?.category as (typeof CATEGORIES)[number])
-    ? input!.category
+  const parsed = extractJson<{ category: string; confidence: number }>(
+    completion.choices[0]?.message?.content ?? ""
+  );
+
+  const category = CATEGORIES.includes(parsed?.category as (typeof CATEGORIES)[number])
+    ? (parsed!.category as (typeof CATEGORIES)[number])
     : "general";
 
   await supabase
     .from("posts")
-    .update({ category, category_confidence: input?.confidence ?? null })
+    .update({ category, category_confidence: parsed?.confidence ?? null })
     .eq("id", postId);
 
   return NextResponse.json({ category });

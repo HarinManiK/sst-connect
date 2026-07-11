@@ -41,12 +41,24 @@ projects (set each one's "Root Directory" accordingly).
 Storage buckets (`post-images`, `avatars`) and their policies are created by
 migration `0004`, so no manual Storage setup is needed.
 
-## 2. Get an Anthropic API key
+## 2. Get a build.nvidia.com API key
 
-Used for feed post categorization and the AI discovery chat. Create one at
-[console.anthropic.com](https://console.anthropic.com) -- both features use
-`claude-haiku-4-5`, which is cheap enough that a small college app's usage
-should cost a few dollars a month, not more.
+Used for feed post categorization and the AI discovery chat, running on
+Llama 3.3 70B Instruct (free tier) rather than a paid model provider:
+
+1. Sign in at [build.nvidia.com](https://build.nvidia.com).
+2. Open any model page (e.g. Llama 3.3 70B Instruct) and use "Get API Key".
+3. That's `NVIDIA_API_KEY` below. The free tier has rate limits (not
+   unlimited), so if the discovery chat or categorization start failing
+   under real load, that's the first thing to check -- either wait out the
+   rate limit or move to a paid NVIDIA tier / different provider.
+
+Both AI routes go through `src/lib/ai/client.ts`, which wraps the `openai`
+SDK pointed at NVIDIA's OpenAI-compatible endpoint. Since open-weight models
+served this way don't reliably support native function/tool-calling, both
+routes prompt for plain JSON and parse it themselves rather than depending
+on structured tool-call output -- worth knowing if you swap in a different
+model later and responses stop parsing.
 
 ## 3. Deploy `apps/web` to Vercel
 
@@ -56,7 +68,7 @@ should cost a few dollars a month, not more.
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
-   - `ANTHROPIC_API_KEY`
+   - `NVIDIA_API_KEY`
    - `NEXT_PUBLIC_SITE_URL` -- set this to the Vercel URL Vercel assigns you
      (you may need to deploy once first, then add this and redeploy)
 4. Deploy. Every push to your main branch auto-redeploys.

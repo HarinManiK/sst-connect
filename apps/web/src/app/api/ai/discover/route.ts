@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
+import { ai, AI_MODEL, extractJson } from "@/lib/ai/client";
 
 type ParsedFilters = {
   batch: number | null;
@@ -23,51 +23,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "not authenticated" }, { status: 401 });
   }
 
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-  const message = await anthropic.messages.create({
-    model: "claude-haiku-4-5",
+  const completion = await ai.chat.completions.create({
+    model: AI_MODEL,
     max_tokens: 300,
-    tools: [
+    temperature: 0,
+    messages: [
       {
-        name: "extract_filters",
-        description: "Extract structured search filters from a natural-language 'find people like X' request.",
-        input_schema: {
-          type: "object",
-          properties: {
-            batch: { type: ["integer", "null"], description: "Batch number if mentioned (1-4), else null" },
-            intent: {
-              type: ["string", "null"],
-              enum: ["friends", "dating", "either", null],
-              description: "What kind of connection they're after, if stated",
-            },
-            interest_keywords: {
-              type: "array",
-              items: { type: "string" },
-              description: "Interest/hobby/skill keywords mentioned, normalized (e.g. 'competitive programming', 'badminton')",
-            },
-            free_text_keywords: {
-              type: "array",
-              items: { type: "string" },
-              description: "Other descriptive words worth loosely matching against bio (e.g. 'night owl', 'indie music')",
-            },
-          },
-          required: ["batch", "intent", "interest_keywords", "free_text_keywords"],
-        },
+        role: "user",
+        content: `Extract structured search filters from this "find people like X" request from a college student.
+
+Request: """${query}"""
+
+Respond with ONLY a JSON object, no other text, in exactly this shape:
+{
+  "batch": integer 1-4 if a batch/year is mentioned, else null,
+  "intent": "friends" | "dating" | "either" | null (only if explicitly implied),
+  "interest_keywords": array of normalized interest/hobby/skill keywords mentioned (e.g. "competitive programming", "badminton"),
+  "free_text_keywords": array of other descriptive words worth loosely matching against a bio (e.g. "night owl", "indie music")
+}`,
       },
     ],
-    tool_choice: { type: "tool", name: "extract_filters" },
-    messages: [{ role: "user", content: query }],
   });
 
-  const toolUse = message.content.find((c) => c.type === "tool_use");
-  const filters =
-    toolUse?.type === "tool_use" ? (toolUse.input as ParsedFilters) : {
-      batch: null,
-      intent: null,
-      interest_keywords: [],
-      free_text_keywords: [],
-    };
+  const filters = extractJson<ParsedFilters>(completion.choices[0]?.message?.content ?? "") ?? {
+    batch: null,
+    intent: null,
+    interest_keywords: [],
+    free_text_keywords: [],
+  };
 
   let profileQuery = supabase
     .from("profiles")
