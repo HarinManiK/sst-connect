@@ -1,45 +1,57 @@
-import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { AppBar, Wordmark } from "@/components/AppBar";
-import { CategoryTabs } from "./CategoryTabs";
-import { PostComposer } from "./PostComposer";
-import { FeedPosts } from "./FeedPosts";
-import { FeedSkeleton } from "./FeedSkeleton";
+import { FeedClient, type FeedItem } from "./FeedClient";
 
-export default async function FeedPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ category?: string }>;
-}) {
-  const { category } = await searchParams;
-  const activeCategory = category ?? "all";
+type PostRow = {
+  id: string;
+  content: string | null;
+  image_url: string | null;
+  category: string;
+  created_at: string;
+  author: { display_name: string; avatar_url: string | null } | null;
+  post_likes: { count: number }[];
+  post_comments: { count: number }[];
+};
 
+export default async function FeedPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: me } = await supabase
-    .from("profiles")
-    .select("display_name, avatar_url")
-    .eq("id", user.id)
-    .single();
+  const [meRes, postsRes, likesRes] = await Promise.all([
+    supabase.from("profiles").select("display_name, avatar_url").eq("id", user.id).single(),
+    supabase
+      .from("posts")
+      .select(
+        "id, content, image_url, category, created_at, author:profiles!posts_author_id_fkey(display_name, avatar_url), post_likes(count), post_comments(count)"
+      )
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(80)
+      .returns<PostRow[]>(),
+    supabase.from("post_likes").select("post_id").eq("profile_id", user.id),
+  ]);
+
+  const likedIds = new Set((likesRes.data ?? []).map((l) => l.post_id));
+
+  const posts: FeedItem[] = (postsRes.data ?? []).map((p) => ({
+    id: p.id,
+    authorName: p.author?.display_name ?? "Unknown",
+    authorAvatar: p.author?.avatar_url ?? null,
+    content: p.content,
+    imageUrl: p.image_url,
+    category: p.category,
+    createdAt: p.created_at,
+    likeCount: p.post_likes?.[0]?.count ?? 0,
+    commentCount: p.post_comments?.[0]?.count ?? 0,
+    liked: likedIds.has(p.id),
+  }));
 
   return (
-    <div>
-      <AppBar title={<Wordmark />} />
-      <CategoryTabs active={activeCategory} />
-      <PostComposer
-        authorName={me?.display_name ?? "You"}
-        authorAvatar={me?.avatar_url ?? null}
-      />
-
-      {/* key changes with the category, so the boundary re-suspends and
-          shows the skeleton on every tab switch (not just page loads). */}
-      <Suspense key={activeCategory} fallback={<FeedSkeleton />}>
-        <FeedPosts category={activeCategory} />
-      </Suspense>
-    </div>
+    <FeedClient
+      me={{ name: meRes.data?.display_name ?? "You", avatar: meRes.data?.avatar_url ?? null }}
+      posts={posts}
+    />
   );
 }
