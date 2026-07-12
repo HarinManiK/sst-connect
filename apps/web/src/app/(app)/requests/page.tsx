@@ -1,4 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
+import { AppBar } from "@/components/AppBar";
+import { Avatar } from "@/components/Avatar";
+import { EmptyState } from "@/components/EmptyState";
+import { PeopleIcon } from "@/components/Icons";
 import { RequestActions } from "./RequestActions";
 
 type ProfileStub = {
@@ -31,53 +35,66 @@ export default async function RequestsPage() {
     .order("created_at", { ascending: false })
     .returns<{ id: string; created_at: string; addressee: ProfileStub }[]>();
 
-  return (
-    <div className="p-4 flex flex-col gap-6">
-      <section>
-        <h1 className="text-lg font-semibold text-brand-700">Friend requests</h1>
-        <div className="mt-3 flex flex-col gap-2">
-          {(!incoming || incoming.length === 0) && (
-            <p className="text-sm text-slate-400">No pending requests.</p>
-          )}
-          {incoming?.map((req) => (
-            <div
-              key={req.id}
-              className="flex items-center justify-between rounded-lg border border-slate-200 p-3"
-            >
-              <div>
-                <p className="font-medium text-slate-800">{req.requester.display_name}</p>
-                {req.requester.batch && (
-                  <p className="text-xs text-slate-400">Batch {req.requester.batch}</p>
-                )}
-              </div>
-              <RequestActions friendshipId={req.id} mode="incoming" />
-            </div>
-          ))}
-        </div>
-      </section>
+  const nothing = (!incoming || incoming.length === 0) && (!outgoing || outgoing.length === 0);
 
-      <section>
-        <h2 className="text-sm font-semibold text-slate-500">Sent</h2>
-        <div className="mt-3 flex flex-col gap-2">
-          {(!outgoing || outgoing.length === 0) && (
-            <p className="text-sm text-slate-400">No outgoing requests.</p>
-          )}
-          {outgoing?.map((req) => (
-            <div
-              key={req.id}
-              className="flex items-center justify-between rounded-lg border border-slate-200 p-3"
-            >
-              <div>
-                <p className="font-medium text-slate-800">{req.addressee.display_name}</p>
-                {req.addressee.batch && (
-                  <p className="text-xs text-slate-400">Batch {req.addressee.batch}</p>
-                )}
-              </div>
-              <RequestActions friendshipId={req.id} mode="outgoing" />
-            </div>
-          ))}
+  function Row({ p, actions }: { p: ProfileStub; actions: React.ReactNode }) {
+    return (
+      <div className="card flex items-center gap-3 p-3">
+        <Avatar name={p.display_name} src={p.avatar_url} size={44} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold text-slate-800">{p.display_name}</p>
+          <p className="text-xs text-slate-400">{p.batch ? `Batch ${p.batch}` : "SST"}</p>
         </div>
-      </section>
+        {actions}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <AppBar title="Requests" />
+
+      {nothing ? (
+        <EmptyState
+          icon={<PeopleIcon />}
+          title="No requests yet"
+          subtitle="When someone wants to connect, they'll show up here."
+          actionLabel="Find people"
+          actionHref="/discover"
+        />
+      ) : (
+        <div className="flex flex-col gap-6 p-4">
+          {incoming && incoming.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Incoming
+              </h2>
+              {incoming.map((req) => (
+                <Row
+                  key={req.id}
+                  p={req.requester}
+                  actions={<RequestActions friendshipId={req.id} mode="incoming" />}
+                />
+              ))}
+            </section>
+          )}
+
+          {outgoing && outgoing.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Sent
+              </h2>
+              {outgoing.map((req) => (
+                <Row
+                  key={req.id}
+                  p={req.addressee}
+                  actions={<RequestActions friendshipId={req.id} mode="outgoing" />}
+                />
+              ))}
+            </section>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { Avatar } from "@/components/Avatar";
+import { BackIcon, SendIcon } from "@/components/Icons";
 
 type Message = {
   id: string;
@@ -12,15 +14,21 @@ type Message = {
   created_at: string;
 };
 
+function clockTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
 export function ChatWindow({
   currentUserId,
   friendId,
   friendName,
+  friendAvatar,
   initialMessages,
 }: {
   currentUserId: string;
   friendId: string;
   friendName: string;
+  friendAvatar: string | null;
   initialMessages: Message[];
 }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
@@ -66,33 +74,44 @@ export function ChatWindow({
       .insert({ sender_id: currentUserId, receiver_id: friendId, content });
 
     setSending(false);
-    if (error) {
-      setDraft(content);
-    }
+    if (error) setDraft(content);
   }
 
   return (
-    <div className="flex flex-1 flex-col">
-      <header className="flex items-center gap-2 border-b border-slate-200 px-4 py-3">
-        <Link href="/chats" className="text-brand-600 text-sm">
-          Back
+    <div className="fixed inset-0 z-40 flex flex-col bg-background">
+      <header className="flex items-center gap-3 border-b border-border bg-surface/90 px-3 py-2.5 backdrop-blur-lg safe-top">
+        <Link
+          href="/chats"
+          className="tap flex h-9 w-9 items-center justify-center rounded-full text-slate-600"
+        >
+          <BackIcon className="text-xl" />
         </Link>
+        <Avatar name={friendName} src={friendAvatar} size={38} />
         <h1 className="font-semibold text-slate-800">{friendName}</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
-        {messages.map((m) => {
+      <div className="flex flex-1 flex-col gap-1.5 overflow-y-auto px-3 py-4">
+        {messages.map((m, idx) => {
           const mine = m.sender_id === currentUserId;
+          const prev = messages[idx - 1];
+          const grouped = prev && prev.sender_id === m.sender_id;
           return (
             <div
               key={m.id}
-              className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${
-                mine
-                  ? "self-end bg-brand-600 text-white rounded-br-sm"
-                  : "self-start bg-slate-100 text-slate-800 rounded-bl-sm"
+              className={`flex max-w-[78%] flex-col ${mine ? "self-end items-end" : "self-start items-start"} ${
+                grouped ? "mt-0.5" : "mt-2"
               }`}
             >
-              {m.content}
+              <div
+                className={`rounded-2xl px-3.5 py-2 text-[15px] ${
+                  mine
+                    ? "rounded-br-md bg-brand-600 text-white"
+                    : "rounded-bl-md bg-surface text-slate-800 border border-border"
+                }`}
+              >
+                {m.content}
+              </div>
+              <span className="mt-0.5 px-1 text-[10px] text-slate-400">{clockTime(m.created_at)}</span>
             </div>
           );
         })}
@@ -104,20 +123,20 @@ export function ChatWindow({
           e.preventDefault();
           sendMessage();
         }}
-        className="flex gap-2 border-t border-slate-200 p-3"
+        className="flex items-center gap-2 border-t border-border bg-surface px-3 py-2.5 safe-bottom"
       >
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Message..."
-          className="flex-1 rounded-full border border-slate-300 px-4 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"
+          className="flex-1 rounded-full border border-border bg-background px-4 py-2.5 text-sm focus:border-brand-400 focus:outline-none"
         />
         <button
           type="submit"
           disabled={sending || !draft.trim()}
-          className="rounded-full bg-brand-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="tap flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white disabled:opacity-40"
         >
-          Send
+          <SendIcon className="text-lg" />
         </button>
       </form>
     </div>

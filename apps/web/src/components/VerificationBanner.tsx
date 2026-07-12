@@ -10,10 +10,10 @@ export function VerificationBanner() {
   return (
     <Link
       href="/profile"
-      className="block bg-brand-50 px-4 py-2 text-center text-sm text-brand-800 border-b border-brand-100"
+      className="tap flex items-center justify-center gap-2 bg-brand-600 px-4 py-2 text-center text-xs font-medium text-white"
     >
-      Link your Scaler email within <strong>{daysLeft} day{daysLeft === 1 ? "" : "s"}</strong> to
-      keep your account after Aug 20.
+      <span className="inline-block h-1.5 w-1.5 rounded-full bg-white/80" />
+      Link your Scaler email — {daysLeft} day{daysLeft === 1 ? "" : "s"} left
     </Link>
   );
 }

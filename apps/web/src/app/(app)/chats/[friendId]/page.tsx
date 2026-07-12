@@ -27,7 +27,7 @@ export default async function ChatThreadPage({
 
   const { data: friend } = await supabase
     .from("profiles")
-    .select("id, display_name")
+    .select("id, display_name, avatar_url")
     .eq("id", friendId)
     .single();
 
@@ -47,6 +47,7 @@ export default async function ChatThreadPage({
       currentUserId={user.id}
       friendId={friendId}
       friendName={friend.display_name}
+      friendAvatar={friend.avatar_url}
       initialMessages={messages ?? []}
     />
   );

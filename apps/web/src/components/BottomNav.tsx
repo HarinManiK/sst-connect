@@ -2,37 +2,34 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { HomeIcon, SparkleIcon, ChatIcon, PeopleIcon, UserIcon } from "@/components/Icons";
 
 const TABS = [
-  { href: "/feed", label: "Feed" },
-  { href: "/discover", label: "Discover" },
-  { href: "/chats", label: "Chats" },
-  { href: "/requests", label: "Requests" },
-  { href: "/profile", label: "Profile" },
+  { href: "/feed", label: "Feed", Icon: HomeIcon },
+  { href: "/discover", label: "Discover", Icon: SparkleIcon },
+  { href: "/chats", label: "Chats", Icon: ChatIcon },
+  { href: "/requests", label: "Requests", Icon: PeopleIcon },
+  { href: "/profile", label: "Profile", Icon: UserIcon },
 ] as const;
 
 export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
-      <ul className="mx-auto flex max-w-md justify-between px-2">
-        {TABS.map((tab) => {
-          const active = pathname.startsWith(tab.href);
+    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/90 backdrop-blur-lg safe-bottom">
+      <ul className="mx-auto flex max-w-md">
+        {TABS.map(({ href, label, Icon }) => {
+          const active = pathname.startsWith(href);
           return (
-            <li key={tab.href} className="flex-1">
+            <li key={href} className="flex-1">
               <Link
-                href={tab.href}
-                className={`flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition ${
+                href={href}
+                className={`tap flex flex-col items-center gap-1 py-2 ${
                   active ? "text-brand-600" : "text-slate-400"
                 }`}
               >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    active ? "bg-brand-600" : "bg-transparent"
-                  }`}
-                />
-                {tab.label}
+                <Icon filled={active} className="text-[22px]" />
+                <span className="text-[10px] font-medium">{label}</span>
               </Link>
             </li>
           );

@@ -1,16 +1,37 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
 import { useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { createPost } from "@/app/actions/posts";
+import { Avatar } from "@/components/Avatar";
+import { Button } from "@/components/Button";
+import { ImageIcon, CloseIcon } from "@/components/Icons";
 
-export function PostComposer() {
+export function PostComposer({
+  authorName,
+  authorAvatar,
+}: {
+  authorName: string;
+  authorAvatar: string | null;
+}) {
   const [content, setContent] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
+
+  function pickFile(f: File | null) {
+    setFile(f);
+    setPreview(f ? URL.createObjectURL(f) : null);
+  }
+
+  function clearFile() {
+    pickFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -38,8 +59,7 @@ export function PostComposer() {
 
         await createPost(content, imageUrl);
         setContent("");
-        setFile(null);
-        if (fileInputRef.current) fileInputRef.current.value = "";
+        clearFile();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
       }
@@ -47,31 +67,52 @@ export function PostComposer() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-4 mt-3 rounded-xl border border-slate-200 p-3">
-      <textarea
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        placeholder="Share something with your batch..."
-        rows={2}
-        className="w-full resize-none text-sm focus:outline-none"
-      />
-      <div className="mt-2 flex items-center justify-between">
+    <form onSubmit={handleSubmit} className="card mx-4 mt-3 p-3">
+      <div className="flex gap-3">
+        <Avatar name={authorName} src={authorAvatar} size={40} />
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="Share something with your batch..."
+          rows={2}
+          className="mt-1.5 w-full resize-none bg-transparent text-sm placeholder:text-slate-400 focus:outline-none"
+        />
+      </div>
+
+      {preview && (
+        <div className="relative mt-2 ml-[52px]">
+          <img src={preview} alt="" className="max-h-64 w-full rounded-xl object-cover" />
+          <button
+            type="button"
+            onClick={clearFile}
+            className="tap absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white"
+          >
+            <CloseIcon className="text-sm" />
+          </button>
+        </div>
+      )}
+
+      <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="tap flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-brand-600 hover:bg-brand-50"
+        >
+          <ImageIcon className="text-lg" />
+          Photo
+        </button>
         <input
           ref={fileInputRef}
           type="file"
           accept="image/*"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="text-xs text-slate-500"
+          onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+          className="hidden"
         />
-        <button
-          type="submit"
-          disabled={pending || (!content.trim() && !file)}
-          className="rounded-full bg-brand-600 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-        >
+        <Button type="submit" size="sm" disabled={pending || (!content.trim() && !file)}>
           {pending ? "Posting..." : "Post"}
-        </button>
+        </Button>
       </div>
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
     </form>
   );
 }

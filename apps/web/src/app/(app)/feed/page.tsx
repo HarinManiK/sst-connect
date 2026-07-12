@@ -1,4 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { AppBar, Wordmark } from "@/components/AppBar";
+import { EmptyState } from "@/components/EmptyState";
+import { HomeIcon } from "@/components/Icons";
 import { CategoryTabs } from "./CategoryTabs";
 import { PostComposer } from "./PostComposer";
 import { PostCard } from "./PostCard";
@@ -9,7 +12,7 @@ type PostRow = {
   image_url: string | null;
   category: string;
   created_at: string;
-  author: { display_name: string } | null;
+  author: { display_name: string; avatar_url: string | null } | null;
   post_likes: { count: number }[];
   post_comments: { count: number }[];
 };
@@ -28,10 +31,16 @@ export default async function FeedPage({
   } = await supabase.auth.getUser();
   if (!user) return null;
 
+  const { data: me } = await supabase
+    .from("profiles")
+    .select("display_name, avatar_url")
+    .eq("id", user.id)
+    .single();
+
   let query = supabase
     .from("posts")
     .select(
-      "id, content, image_url, category, created_at, author:profiles!posts_author_id_fkey(display_name), post_likes(count), post_comments(count)"
+      "id, content, image_url, category, created_at, author:profiles!posts_author_id_fkey(display_name, avatar_url), post_likes(count), post_comments(count)"
     )
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
@@ -50,21 +59,28 @@ export default async function FeedPage({
   const likedPostIds = new Set((myLikes ?? []).map((l) => l.post_id));
 
   return (
-    <div className="pb-4">
+    <div>
+      <AppBar title={<Wordmark />} />
       <CategoryTabs active={activeCategory} />
-      <PostComposer />
+      <PostComposer
+        authorName={me?.display_name ?? "You"}
+        authorAvatar={me?.avatar_url ?? null}
+      />
 
-      <div className="mt-1">
+      <div className="pb-4">
         {(!posts || posts.length === 0) && (
-          <p className="mx-4 mt-6 text-sm text-slate-400">
-            Nothing here yet -- be the first to post.
-          </p>
+          <EmptyState
+            icon={<HomeIcon />}
+            title="Nothing here yet"
+            subtitle="Be the first to post something to your batch."
+          />
         )}
         {posts?.map((post) => (
           <PostCard
             key={post.id}
             postId={post.id}
             authorName={post.author?.display_name ?? "Unknown"}
+            authorAvatar={post.author?.avatar_url ?? null}
             content={post.content}
             imageUrl={post.image_url}
             category={post.category}

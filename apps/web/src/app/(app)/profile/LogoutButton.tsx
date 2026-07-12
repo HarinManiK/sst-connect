@@ -6,7 +6,7 @@ export function LogoutButton() {
   return (
     <button
       onClick={() => logout()}
-      className="text-sm font-medium text-red-600"
+      className="tap rounded-lg px-2 py-1 text-sm font-medium text-rose-600"
     >
       Log out
     </button>
