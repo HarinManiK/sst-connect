@@ -33,6 +33,8 @@ Look up data (you may do this several times):
   {"tool":"count_students","args":{ ...same optional filters... }}
   {"tool":"app_stats","args":{}}   -> total students, count per batch, most common interests
 
+Note: count_students and app_stats include EVERY student on the app (the current user counts too). query_students returns other students to connect with (never the user themselves). So "how many people are on here?" -> use app_stats/count_students and report the real total, even if it's small (early days is fine -- say so warmly).
+
 Reply to the user:
   {"tool":"answer","text":"...","profile_ids":["id1","id2"]}
     - "text": short, warm, direct. Answer the actual question.
@@ -41,7 +43,10 @@ Reply to the user:
 
 Examples of the range you handle: "how many people are on here?", "who's in batch 4?", "find someone into anime and badminton", "any batch 3 girls looking to date?", "what are the most popular interests?", "someone chill I can study with". Use the tools to really answer.`;
 
-async function loadAll(supabase: SupabaseClient, meId: string): Promise<AgentProfile[]> {
+// Loads everyone visible INCLUDING the current user. Counts/stats should
+// reflect the whole user base; only people-recommendations exclude self
+// (you don't discover yourself), which runTool handles.
+async function loadAll(supabase: SupabaseClient): Promise<AgentProfile[]> {
   const { data } = await supabase
     .from("profiles")
     .select(
@@ -49,7 +54,6 @@ async function loadAll(supabase: SupabaseClient, meId: string): Promise<AgentPro
     )
     .eq("discoverable", true)
     .is("deleted_at", null)
-    .neq("id", meId)
     .limit(2000);
 
   return (data ?? []).map((p: any) => ({
@@ -102,7 +106,7 @@ function applyFilters(all: AgentProfile[], args: Filters): AgentProfile[] {
   return out;
 }
 
-function runTool(all: AgentProfile[], tool: string, args: Filters) {
+function runTool(all: AgentProfile[], meId: string, tool: string, args: Filters) {
   if (tool === "app_stats") {
     const byBatch: Record<string, number> = {};
     const interestCounts: Record<string, number> = {};
@@ -124,9 +128,9 @@ function runTool(all: AgentProfile[], tool: string, args: Filters) {
     return { result: { count: matched.length }, matched: [] };
   }
 
-  // query_students
+  // query_students -- recommendations, so exclude the user themselves
   const limit = Math.min(Math.max(args.limit ?? 12, 1), 30);
-  const slice = matched.slice(0, limit);
+  const slice = matched.filter((p) => p.id !== meId).slice(0, limit);
   return {
     result: {
       total_matched: matched.length,
@@ -150,7 +154,7 @@ export async function runDiscoveryAgent(
   meId: string,
   userQuery: string
 ): Promise<AgentResult> {
-  const all = await loadAll(supabase, meId);
+  const all = await loadAll(supabase);
   const seen = new Map<string, AgentProfile>();
 
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
@@ -178,7 +182,7 @@ export async function runDiscoveryAgent(
       return { text: String(parsed.text ?? "").trim(), profiles };
     }
 
-    const { result, matched } = runTool(all, parsed.tool, parsed.args ?? {});
+    const { result, matched } = runTool(all, meId, parsed.tool, parsed.args ?? {});
     for (const p of matched) seen.set(p.id, p);
 
     messages.push({ role: "assistant", content: raw });
