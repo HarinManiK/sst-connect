@@ -6,43 +6,26 @@ import { ProfileResultCard } from "./ProfileResultCard";
 
 type Candidate = {
   id: string;
-  display_name: string;
+  name: string;
   avatar_url: string | null;
   batch: number | null;
   branch: string | null;
   bio: string | null;
-  profile_interests: { interests: { name: string } | null }[];
+  interests: string[];
 };
 
 type Turn = {
   query: string;
-  summary: string;
+  text: string;
   results: Candidate[];
 };
 
 const EXAMPLES = [
-  "batch 4 into competitive programming",
-  "someone who loves music & movies",
-  "night owl who codes",
-  "into badminton, looking for friends",
+  "how many people are on here?",
+  "who's in batch 4?",
+  "someone into music & movies",
+  "a night owl who codes",
 ];
-
-function summarize(filters: {
-  batch: number | null;
-  intent: string | null;
-  interest_keywords: string[];
-  free_text_keywords: string[];
-}) {
-  const parts: string[] = [];
-  if (filters.batch) parts.push(`batch ${filters.batch}`);
-  if (filters.intent) parts.push(filters.intent);
-  if (filters.interest_keywords.length) parts.push(`into ${filters.interest_keywords.join(", ")}`);
-  if (filters.free_text_keywords.length)
-    parts.push(`matching "${filters.free_text_keywords.join(", ")}"`);
-  return parts.length
-    ? `Here's who I found ${parts.join(", ")}:`
-    : "Here are some people you might click with:";
-}
 
 export function DiscoverChat() {
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -64,13 +47,18 @@ export function DiscoverChat() {
       if (!res.ok) {
         setTurns((prev) => [
           ...prev,
-          { query, summary: data.error ?? "Something went wrong. Try again.", results: [] },
+          { query, text: data.error ?? "Something went wrong. Try again.", results: [] },
         ]);
         return;
       }
       setTurns((prev) => [
         ...prev,
-        { query, summary: summarize(data.filters), results: data.results ?? [] },
+        { query, text: data.text ?? "", results: data.results ?? [] },
+      ]);
+    } catch {
+      setTurns((prev) => [
+        ...prev,
+        { query, text: "Couldn't reach the assistant. Check your connection.", results: [] },
       ]);
     } finally {
       setPending(false);
@@ -90,9 +78,10 @@ export function DiscoverChat() {
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-50 text-3xl text-brand-500">
               <SparkleIcon />
             </div>
-            <p className="mt-4 font-semibold text-slate-700">Find your people</p>
+            <p className="mt-4 font-semibold text-slate-700">Ask me anything</p>
             <p className="mt-1 max-w-xs text-sm text-slate-400">
-              Describe who you&apos;re looking for in plain words. AI does the matching.
+              Find people, ask who&apos;s on the app, or describe exactly who you want to
+              meet — I&apos;ll do the searching.
             </p>
             <div className="mt-5 flex flex-wrap justify-center gap-2">
               {EXAMPLES.map((ex) => (
@@ -114,22 +103,22 @@ export function DiscoverChat() {
               <div className="tap max-w-[85%] self-end rounded-2xl rounded-br-md bg-brand-600 px-3.5 py-2 text-sm text-white">
                 {turn.query}
               </div>
-              <p className="text-sm text-slate-500">{turn.summary}</p>
-              {turn.results.length === 0 && (
-                <p className="text-sm text-slate-400">No matches — try different words.</p>
+              {turn.text && (
+                <div className="flex items-start gap-2">
+                  <SparkleIcon className="mt-0.5 shrink-0 text-base text-brand-500" />
+                  <p className="text-sm leading-relaxed text-slate-700">{turn.text}</p>
+                </div>
               )}
               {turn.results.map((r) => (
                 <ProfileResultCard
                   key={r.id}
                   id={r.id}
-                  displayName={r.display_name}
+                  displayName={r.name}
                   avatarUrl={r.avatar_url}
                   batch={r.batch}
                   branch={r.branch}
                   bio={r.bio}
-                  interests={r.profile_interests
-                    .map((pi) => pi.interests?.name)
-                    .filter((n): n is string => Boolean(n))}
+                  interests={r.interests}
                 />
               ))}
             </div>
@@ -137,7 +126,7 @@ export function DiscoverChat() {
           {pending && (
             <div className="flex items-center gap-2 text-sm text-slate-400">
               <SparkleIcon className="animate-pulse text-brand-400" />
-              Searching...
+              Thinking...
             </div>
           )}
         </div>
@@ -154,7 +143,7 @@ export function DiscoverChat() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Describe who you're looking for..."
+            placeholder="Ask about people on SST Connect..."
             className="flex-1 bg-transparent px-3 py-1.5 text-sm focus:outline-none"
           />
           <button
