@@ -13,7 +13,7 @@ behind a secret URL.
 | `apps/web` | The student app (Next.js PWA) | Vercel (project #1) |
 | `apps/admin` | Your admin panel (Next.js) | Vercel (project #2) |
 | `supabase/` | Database schema (SQL migrations) | Supabase (Postgres + Auth + Realtime + Storage) |
-| AI features | Post categorization + discovery chat | build.nvidia.com (Llama 3.3 70B, free tier) |
+| AI features | Post categorization + discovery chat | Google AI Studio / Gemini (Flash models, free tier) |
 | Sign-in | "Continue with Google" for students; Google for the admin too | Google Cloud (one free OAuth client) |
 
 **Follow the parts in order.** They're arranged so you never have to come
@@ -21,8 +21,9 @@ back and redo an earlier step — each part only needs things you already
 have by the time you reach it.
 
 Accounts you'll need (all free): [supabase.com](https://supabase.com),
-[vercel.com](https://vercel.com), [build.nvidia.com](https://build.nvidia.com),
-and a Google account for [console.cloud.google.com](https://console.cloud.google.com).
+[vercel.com](https://vercel.com),
+[aistudio.google.com](https://aistudio.google.com/apikey), and a Google
+account for [console.cloud.google.com](https://console.cloud.google.com).
 
 ---
 
@@ -67,16 +68,24 @@ after Vercel gives you your app URLs.)
 
 ---
 
-## Part 2 — NVIDIA API key (the AI)
+## Part 2 — Gemini API key (the AI)
 
-1. Sign in at [build.nvidia.com](https://build.nvidia.com).
-2. Open any model page — e.g. search for **Llama 3.3 70B Instruct**.
-3. Click **Get API Key** and copy it into your scratch note.
+1. Go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+   and sign in with a Google account.
+2. Click **Create API key** and copy it into your scratch note.
 
-The free tier is rate-limited. If the discovery chat or post categorization
-ever starts failing under real load, this is the first suspect — wait it
-out or upgrade. To use a different hosted model later, set the optional
-`NVIDIA_MODEL` env var (default: `meta/llama-3.3-70b-instruct`).
+Both AI features (post categorization + discovery chat) run on Gemini's
+free-tier **Flash** models. The app uses a **fallback chain**: it tries one
+model, and if that one is momentarily rate-limited, it automatically drops
+to the next. The default order is
+`gemini-2.5-flash → gemini-2.0-flash → gemini-2.5-flash-lite`.
+
+The free tier is capped at roughly **1,500 requests/day** (resets midnight
+US Pacific) and ~10–15 requests/minute, per Google account. If you ever
+want to change the chain (e.g. a newer model shows up in AI Studio), set
+the optional `GEMINI_MODELS` env var to a comma-separated list — no code
+change needed. Confirm the exact names available to your key at
+[aistudio.google.com](https://aistudio.google.com/).
 
 ---
 
@@ -94,7 +103,7 @@ out or upgrade. To use a different hosted model later, set the optional
    | `NEXT_PUBLIC_SUPABASE_URL` | your Project URL |
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the anon key |
    | `SUPABASE_SERVICE_ROLE_KEY` | the service_role key |
-   | `NVIDIA_API_KEY` | your NVIDIA key |
+   | `GEMINI_API_KEY` | your Gemini key |
 
 4. Click **Deploy**, wait for it to finish, and note the URL it gives you
    (like `https://sst-connect.vercel.app`). Write it in your scratch note
@@ -252,7 +261,8 @@ npm run dev:admin   # http://localhost:3001
 | After Google sign-in you bounce back to the login page | Your app's `/auth/callback` URL is missing from Supabase → URL Configuration → Redirect URLs (Part 6). |
 | Admin secret URL shows 404 | `ADMIN_ENTRY_SECRET` in Vercel doesn't match what you typed, or you edited env vars without redeploying (Vercel → Deployments → Redeploy). |
 | Admin login loops to 404 after Google | You signed in with a Google account whose email ≠ `ADMIN_EMAIL`. |
-| Posts never get categorized | Bad/rate-limited `NVIDIA_API_KEY`; check the Vercel function logs for the web project. |
+| Posts never get categorized | Bad/rate-limited `GEMINI_API_KEY`, or every model in the chain is exhausted; check the Vercel function logs for the web project. |
+| Discovery chat says "AI is busy right now" | The whole Gemini model chain is rate-limited (you've hit the free-tier RPM/daily cap). Wait for the window to reset, or widen `GEMINI_MODELS`. |
 | "Link your Scaler email" mail never arrives | Supabase's built-in mailer is heavily rate-limited (a few emails/hour). Fine for testing; before launch, plug a real SMTP provider into Supabase (Project Settings → Auth → SMTP). |
 | Everything 500s after Supabase was idle | Free-tier projects pause after ~1 week of inactivity — unpause from the Supabase dashboard (or upgrade to Pro before launch). |
 

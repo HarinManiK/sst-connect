@@ -51,6 +51,13 @@ export function DiscoverChat() {
         body: JSON.stringify({ query }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        setTurns((prev) => [
+          ...prev,
+          { query, summary: data.error ?? "Something went wrong. Try again.", results: [] },
+        ]);
+        return;
+      }
       setTurns((prev) => [
         ...prev,
         { query, summary: summarize(data.filters), results: data.results ?? [] },

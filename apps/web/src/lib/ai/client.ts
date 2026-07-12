@@ -1,18 +1,58 @@
 import OpenAI from "openai";
 
-// build.nvidia.com exposes an OpenAI-compatible chat completions API for its
-// hosted NIM models (Llama 3.3 70B Instruct by default here), so the
-// `openai` SDK works as-is with a different baseURL + key.
+// Google AI Studio (Gemini) exposes an OpenAI-compatible endpoint, so the
+// `openai` SDK works unchanged with a different baseURL + key.
 export const ai = new OpenAI({
-  apiKey: process.env.NVIDIA_API_KEY,
-  baseURL: "https://integrate.api.nvidia.com/v1",
+  apiKey: process.env.GEMINI_API_KEY,
+  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
 });
 
-export const AI_MODEL = process.env.NVIDIA_MODEL ?? "meta/llama-3.3-70b-instruct";
+// Fallback chain: tried in order. If one model is rate-limited (HTTP 429)
+// or errors, the next is tried. Ordered cheap/fast -> more capable, since
+// both our jobs (classification, filter extraction) are light. Override the
+// whole list from the environment without a code change, e.g.
+//   GEMINI_MODELS=gemini-3-flash,gemini-2.5-flash,gemini-2.5-flash-lite
+// Check Google AI Studio for the exact model names available to your key.
+export const AI_MODELS = (
+  process.env.GEMINI_MODELS ??
+  "gemini-2.5-flash,gemini-2.0-flash,gemini-2.5-flash-lite"
+)
+  .split(",")
+  .map((m) => m.trim())
+  .filter(Boolean);
 
-// Open-weights models served this way don't reliably support OpenAI's
-// `tools`/function-calling parameter, so we ask for plain JSON and parse it
-// ourselves rather than depending on structured tool-call output.
+type CompletionArgs = Omit<
+  OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
+  "model"
+>;
+
+function isRetryable(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  // 429 = rate limited, 5xx = transient server errors -> try the next model.
+  // 4xx (bad request, auth) would fail identically on every model, so bail.
+  return status === 429 || (typeof status === "number" && status >= 500);
+}
+
+// Runs a chat completion against the fallback chain. Throws only if every
+// model in the chain fails.
+export async function chatWithFallback(args: CompletionArgs) {
+  let lastError: unknown;
+
+  for (const model of AI_MODELS) {
+    try {
+      return await ai.chat.completions.create({ ...args, model });
+    } catch (err) {
+      lastError = err;
+      if (!isRetryable(err)) throw err;
+      // otherwise fall through to the next model
+    }
+  }
+
+  throw lastError ?? new Error("No AI models configured (GEMINI_MODELS is empty)");
+}
+
+// Gemini's OpenAI-compat layer doesn't reliably honor structured tool-calls,
+// so we prompt for plain JSON and parse it ourselves.
 export function extractJson<T>(text: string): T | null {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) return null;

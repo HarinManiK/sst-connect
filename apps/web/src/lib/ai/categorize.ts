@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ai, AI_MODEL, extractJson } from "@/lib/ai/client";
+import { chatWithFallback, extractJson } from "@/lib/ai/client";
 
 const CATEGORIES = ["hot", "tech", "culture", "general"] as const;
 
@@ -16,8 +16,7 @@ export async function categorizePost(postId: string) {
 
     if (!post?.content?.trim()) return;
 
-    const completion = await ai.chat.completions.create({
-      model: AI_MODEL,
+    const completion = await chatWithFallback({
       max_tokens: 100,
       temperature: 0,
       messages: [

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { ai, AI_MODEL, extractJson } from "@/lib/ai/client";
+import { chatWithFallback, extractJson } from "@/lib/ai/client";
 
 type ParsedFilters = {
   batch: number | null;
@@ -23,14 +23,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "not authenticated" }, { status: 401 });
   }
 
-  const completion = await ai.chat.completions.create({
-    model: AI_MODEL,
-    max_tokens: 300,
-    temperature: 0,
-    messages: [
-      {
-        role: "user",
-        content: `Extract structured search filters from this "find people like X" request from a college student.
+  let completionText = "";
+  try {
+    const completion = await chatWithFallback({
+      max_tokens: 300,
+      temperature: 0,
+      messages: [
+        {
+          role: "user",
+          content: `Extract structured search filters from this "find people like X" request from a college student.
 
 Request: """${query}"""
 
@@ -41,11 +42,20 @@ Respond with ONLY a JSON object, no other text, in exactly this shape:
   "interest_keywords": array of normalized interest/hobby/skill keywords mentioned (e.g. "competitive programming", "badminton"),
   "free_text_keywords": array of other descriptive words worth loosely matching against a bio (e.g. "night owl", "indie music")
 }`,
-      },
-    ],
-  });
+        },
+      ],
+    });
+    completionText = completion.choices[0]?.message?.content ?? "";
+  } catch {
+    // Whole model chain is rate-limited/down. Tell the client to back off
+    // rather than surfacing a 500.
+    return NextResponse.json(
+      { error: "AI is busy right now, try again in a moment." },
+      { status: 503 }
+    );
+  }
 
-  const filters = extractJson<ParsedFilters>(completion.choices[0]?.message?.content ?? "") ?? {
+  const filters = extractJson<ParsedFilters>(completionText) ?? {
     batch: null,
     intent: null,
     interest_keywords: [],
