@@ -6,7 +6,7 @@ import { HomeIcon, SparkleIcon, ChatIcon, PeopleIcon, UserIcon } from "@/compone
 
 const TABS = [
   { href: "/feed", label: "Feed", Icon: HomeIcon },
-  { href: "/discover", label: "Discover", Icon: SparkleIcon },
+  { href: "/copilot", label: "Copilot", Icon: SparkleIcon },
   { href: "/chats", label: "Chats", Icon: ChatIcon },
   { href: "/requests", label: "Requests", Icon: PeopleIcon },
   { href: "/profile", label: "Profile", Icon: UserIcon },

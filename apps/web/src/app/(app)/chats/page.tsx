@@ -69,7 +69,7 @@ export default async function ChatsPage() {
           title="No conversations yet"
           subtitle="Add friends and accept requests to start chatting."
           actionLabel="Find people"
-          actionHref="/discover"
+          actionHref="/copilot"
         />
       ) : (
         <div className="flex flex-col">

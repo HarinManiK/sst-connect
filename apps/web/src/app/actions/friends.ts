@@ -21,7 +21,7 @@ export async function sendFriendRequest(addresseeId: string) {
     .insert({ requester_id: userId, addressee_id: addresseeId, status: "pending" });
 
   if (error) throw new Error(error.message);
-  revalidatePath("/discover");
+  revalidatePath("/copilot");
   revalidatePath("/requests");
 }
 

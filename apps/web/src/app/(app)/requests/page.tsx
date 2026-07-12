@@ -60,7 +60,7 @@ export default async function RequestsPage() {
           title="No requests yet"
           subtitle="When someone wants to connect, they'll show up here."
           actionLabel="Find people"
-          actionHref="/discover"
+          actionHref="/copilot"
         />
       ) : (
         <div className="flex flex-col gap-6 p-4">
