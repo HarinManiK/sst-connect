@@ -4,14 +4,12 @@ import { useState } from "react";
 import { SparkleIcon, SendIcon } from "@/components/Icons";
 import { PersonCard, type PersonCardData } from "./PersonCard";
 import { PostPreviewCard, type PostCardData } from "./PostPreviewCard";
-import { ActionCard, type Action } from "./ActionCard";
 
 type Turn = {
   query: string;
   text: string;
   people: PersonCardData[];
   posts: PostCardData[];
-  action: Action | null;
 };
 
 const EXAMPLES = [
@@ -19,7 +17,7 @@ const EXAMPLES = [
   "what's happening on campus?",
   "find someone into music & coding",
   "who am I most compatible with?",
-  "write a post introducing myself",
+  "what are the most popular interests?",
 ];
 
 export function CopilotChat() {
@@ -51,24 +49,18 @@ export function CopilotChat() {
       if (!res.ok) {
         setTurns((prev) => [
           ...prev,
-          { query, text: data.error ?? "Something went wrong.", people: [], posts: [], action: null },
+          { query, text: data.error ?? "Something went wrong.", people: [], posts: [] },
         ]);
         return;
       }
       setTurns((prev) => [
         ...prev,
-        {
-          query,
-          text: data.text ?? "",
-          people: data.people ?? [],
-          posts: data.posts ?? [],
-          action: data.action ?? null,
-        },
+        { query, text: data.text ?? "", people: data.people ?? [], posts: data.posts ?? [] },
       ]);
     } catch {
       setTurns((prev) => [
         ...prev,
-        { query, text: "Couldn't reach Copilot. Check your connection.", people: [], posts: [], action: null },
+        { query, text: "Couldn't reach Copilot. Check your connection.", people: [], posts: [] },
       ]);
     } finally {
       setPending(false);
@@ -90,8 +82,8 @@ export function CopilotChat() {
             </div>
             <p className="mt-4 font-semibold text-slate-700">Ask me anything</p>
             <p className="mt-1 max-w-xs text-sm text-slate-400">
-              People, posts, campus trends, your profile — or ask me to post, add friends, or
-              tweak your bio. I&apos;ll always confirm before doing anything.
+              Ask me anything about the people, posts, and trends on SST Connect — I know
+              the whole app.
             </p>
             <div className="mt-5 flex flex-wrap justify-center gap-2">
               {EXAMPLES.map((ex) => (
@@ -127,7 +119,6 @@ export function CopilotChat() {
               {turn.posts.map((p) => (
                 <PostPreviewCard key={p.id} post={p} />
               ))}
-              {turn.action && <ActionCard action={turn.action} />}
             </div>
           ))}
           {pending && (
