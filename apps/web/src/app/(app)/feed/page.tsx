@@ -5,7 +5,6 @@ type PostRow = {
   id: string;
   content: string | null;
   image_url: string | null;
-  category: string;
   created_at: string;
   author: { display_name: string; avatar_url: string | null } | null;
   post_likes: { count: number }[];
@@ -24,11 +23,11 @@ export default async function FeedPage() {
     supabase
       .from("posts")
       .select(
-        "id, content, image_url, category, created_at, author:profiles!posts_author_id_fkey(display_name, avatar_url), post_likes(count), post_comments(count)"
+        "id, content, image_url, created_at, author:profiles!posts_author_id_fkey(display_name, avatar_url), post_likes(count), post_comments(count)"
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
-      .limit(80)
+      .limit(100)
       .returns<PostRow[]>(),
     supabase.from("post_likes").select("post_id").eq("profile_id", user.id),
   ]);
@@ -41,7 +40,6 @@ export default async function FeedPage() {
     authorAvatar: p.author?.avatar_url ?? null,
     content: p.content,
     imageUrl: p.image_url,
-    category: p.category,
     createdAt: p.created_at,
     likeCount: p.post_likes?.[0]?.count ?? 0,
     commentCount: p.post_comments?.[0]?.count ?? 0,

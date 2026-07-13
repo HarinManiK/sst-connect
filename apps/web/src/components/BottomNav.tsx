@@ -8,7 +8,7 @@ const TABS = [
   { href: "/feed", label: "Feed", Icon: HomeIcon },
   { href: "/copilot", label: "Copilot", Icon: SparkleIcon },
   { href: "/chats", label: "Chats", Icon: ChatIcon },
-  { href: "/requests", label: "Requests", Icon: PeopleIcon },
+  { href: "/people", label: "People", Icon: PeopleIcon },
   { href: "/profile", label: "Profile", Icon: UserIcon },
 ] as const;
 

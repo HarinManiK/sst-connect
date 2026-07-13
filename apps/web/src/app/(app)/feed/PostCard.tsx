@@ -1,18 +1,12 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { useOptimistic, useTransition } from "react";
+import { useState } from "react";
+import Link from "next/link";
 import { toggleLike } from "@/app/actions/posts";
 import { reportContent } from "@/app/actions/reports";
 import { Avatar } from "@/components/Avatar";
 import { HeartIcon, CommentIcon, FlagIcon } from "@/components/Icons";
-
-const CATEGORY_STYLES: Record<string, string> = {
-  hot: "bg-rose-50 text-rose-600",
-  tech: "bg-brand-50 text-brand-600",
-  culture: "bg-violet-50 text-violet-600",
-  general: "bg-slate-100 text-slate-500",
-};
 
 function timeAgo(iso: string) {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -29,38 +23,39 @@ export function PostCard({
   authorAvatar,
   content,
   imageUrl,
-  category,
   createdAt,
   likeCount,
   commentCount,
   liked,
+  disableCommentLink = false,
 }: {
   postId: string;
   authorName: string;
   authorAvatar: string | null;
   content: string | null;
   imageUrl: string | null;
-  category: string;
   createdAt: string;
   likeCount: number;
   commentCount: number;
   liked: boolean;
+  disableCommentLink?: boolean;
 }) {
-  const [, startTransition] = useTransition();
-  const [optimistic, setOptimistic] = useOptimistic(
-    { liked, likeCount },
-    (_s, next: { liked: boolean; likeCount: number }) => next
-  );
+  const [like, setLike] = useState({ liked, count: likeCount });
+  const [busy, setBusy] = useState(false);
 
-  function handleToggle() {
-    const next = {
-      liked: !optimistic.liked,
-      likeCount: optimistic.likeCount + (optimistic.liked ? -1 : 1),
-    };
-    startTransition(async () => {
-      setOptimistic(next);
-      await toggleLike(postId, optimistic.liked);
-    });
+  async function onLike() {
+    if (busy) return;
+    setBusy(true);
+    const prev = like;
+    const next = { liked: !like.liked, count: like.count + (like.liked ? -1 : 1) };
+    setLike(next);
+    try {
+      await toggleLike(postId, prev.liked);
+    } catch {
+      setLike(prev);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -71,13 +66,6 @@ export function PostCard({
           <p className="truncate text-sm font-semibold text-slate-800">{authorName}</p>
           <p className="text-xs text-slate-400">{timeAgo(createdAt)}</p>
         </div>
-        <span
-          className={`rounded-full px-2.5 py-1 text-[11px] font-medium capitalize ${
-            CATEGORY_STYLES[category] ?? CATEGORY_STYLES.general
-          }`}
-        >
-          {category}
-        </span>
       </div>
 
       {content && (
@@ -89,27 +77,35 @@ export function PostCard({
 
       <div className="flex items-center gap-1 px-2 py-1.5">
         <button
-          onClick={handleToggle}
+          onClick={onLike}
           className="tap flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-500"
         >
           <HeartIcon
-            filled={optimistic.liked}
-            className={`text-lg ${optimistic.liked ? "animate-pop text-rose-500" : ""}`}
+            filled={like.liked}
+            className={`text-lg ${like.liked ? "text-rose-500" : ""}`}
           />
-          {optimistic.likeCount > 0 && (
-            <span className={optimistic.liked ? "text-rose-500" : ""}>{optimistic.likeCount}</span>
-          )}
+          {like.count > 0 && <span className={like.liked ? "text-rose-500" : ""}>{like.count}</span>}
         </button>
-        <button className="tap flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-500">
-          <CommentIcon className="text-lg" />
-          {commentCount > 0 && <span>{commentCount}</span>}
-        </button>
+
+        {disableCommentLink ? (
+          <span className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-500">
+            <CommentIcon className="text-lg" />
+            {commentCount > 0 && <span>{commentCount}</span>}
+          </span>
+        ) : (
+          <Link
+            href={`/feed/${postId}`}
+            className="tap flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-500"
+          >
+            <CommentIcon className="text-lg" />
+            {commentCount > 0 ? <span>{commentCount}</span> : <span>Comment</span>}
+          </Link>
+        )}
+
         <button
           onClick={() => {
             const reason = window.prompt("Why are you reporting this post?");
-            if (reason && reason.trim()) {
-              startTransition(() => reportContent("post", postId, reason.trim()));
-            }
+            if (reason && reason.trim()) reportContent("post", postId, reason.trim());
           }}
           className="tap ml-auto flex items-center rounded-lg px-2.5 py-1.5 text-slate-300 hover:text-rose-500"
         >

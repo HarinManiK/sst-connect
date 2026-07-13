@@ -1,9 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { categorizePost } from "@/lib/ai/categorize";
 
 export async function createPost(content: string, imageUrl: string | null) {
   const supabase = await createClient();
@@ -15,18 +13,11 @@ export async function createPost(content: string, imageUrl: string | null) {
   const trimmed = content.trim();
   if (!trimmed && !imageUrl) throw new Error("Post can't be empty");
 
-  const { data: post, error } = await supabase
+  const { error } = await supabase
     .from("posts")
-    .insert({ author_id: user.id, content: trimmed || null, image_url: imageUrl })
-    .select("id")
-    .single();
+    .insert({ author_id: user.id, content: trimmed || null, image_url: imageUrl });
 
   if (error) throw new Error(error.message);
-
-  // Runs after the response is sent, so posting stays instant; the post
-  // just appears in "general" until the categorization lands.
-  after(() => categorizePost(post.id));
-
   revalidatePath("/feed");
 }
 
@@ -44,4 +35,5 @@ export async function toggleLike(postId: string, currentlyLiked: boolean) {
   }
 
   revalidatePath("/feed");
+  revalidatePath(`/feed/${postId}`);
 }

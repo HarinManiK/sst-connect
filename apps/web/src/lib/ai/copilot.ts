@@ -15,11 +15,13 @@ const PLANNER = `You convert a user's question to SST Connect's Copilot into a s
 Output ONLY a JSON object (no prose, no fences) with this shape:
 {
   "intent": "stats" | "count_people" | "list_people" | "list_posts" | "person" | "my_stats" | "chat",
-  "people": { "batch": <1-4|null>, "intent": "friends|dating|either|null", "interests": [<keywords>]|null, "text": <string|null> },
-  "posts": { "category": "hot|tech|culture|general|null", "text": <string|null>, "author": <name|null>, "since_days": <int|null> },
+  "people": { "batch": <1-4|null>, "interests": [<keywords>]|null, "text": <string|null> },
+  "posts": { "text": <string|null>, "author": <name|null>, "since_days": <int|null> },
   "name": <person name if the question is about one specific person, else null>,
   "limit": <int|null>
 }
+
+Match people by their interests, bio, program, and batch (via the "interests" and free "text" fields) — there is no dating/friends flag. For "find me someone who <does X / is into X>", put X into interests or text.
 
 Pick the intent:
 - "stats": totals / "how many people" (no specific filter) / breakdowns / most popular interests.
@@ -35,7 +37,7 @@ Fill only the relevant filter fields; use null for the rest. Keep interest/text 
 // ── Step 2: EXECUTE against Postgres (exact, scalable). ──────────────────
 type Plan = {
   intent: string;
-  people?: { batch?: number | null; intent?: string | null; interests?: string[] | null; text?: string | null };
+  people?: { batch?: number | null; interests?: string[] | null; text?: string | null };
   posts?: { category?: string | null; text?: string | null; author?: string | null; since_days?: number | null };
   name?: string | null;
   limit?: number | null;
@@ -86,7 +88,7 @@ async function execute(
     case "count_people": {
       const { data: count } = await supabase.rpc("ai_count_people", {
         p_batch: pf.batch ?? null,
-        p_intent: pf.intent ?? null,
+        p_intent: null,
         p_interests: pf.interests?.length ? pf.interests : null,
         p_text: pf.text ?? null,
       });
@@ -96,7 +98,7 @@ async function execute(
     case "list_people": {
       const { data: rows } = await supabase.rpc("ai_search_people", {
         p_batch: pf.batch ?? null,
-        p_intent: pf.intent ?? null,
+        p_intent: null,
         p_interests: pf.interests?.length ? pf.interests : null,
         p_text: pf.text ?? null,
         p_limit: limit,
