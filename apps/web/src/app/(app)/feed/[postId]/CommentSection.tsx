@@ -24,9 +24,11 @@ function timeAgo(iso: string) {
 export function CommentSection({
   postId,
   initialComments,
+  me,
 }: {
   postId: string;
   initialComments: CommentItem[];
+  me: { name: string; avatar: string | null };
 }) {
   const [comments, setComments] = useState<CommentItem[]>(initialComments);
   const [text, setText] = useState("");
@@ -42,8 +44,17 @@ export function CommentSection({
     setText("");
 
     const res = await addComment(postId, content);
-    if (res.ok && res.comment) {
-      setComments((prev) => [...prev, res.comment!]);
+    if (res.ok && res.id) {
+      setComments((prev) => [
+        ...prev,
+        {
+          id: res.id!,
+          author_name: me.name,
+          author_avatar: me.avatar,
+          content,
+          created_at: res.created_at ?? new Date().toISOString(),
+        },
+      ]);
     } else {
       setText(content);
       setError(res.error ?? "Couldn't post comment.");

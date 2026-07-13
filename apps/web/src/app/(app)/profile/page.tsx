@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { AppBar } from "@/components/AppBar";
-import { Avatar } from "@/components/Avatar";
 import { CheckIcon } from "@/components/Icons";
+import { AvatarEditor } from "./AvatarEditor";
 import { ProfileForm } from "./ProfileForm";
 import { LinkEmailForm } from "./LinkEmailForm";
 import { InterestPicker } from "./InterestPicker";
@@ -39,7 +39,7 @@ export default async function ProfilePage() {
       <AppBar title="Profile" right={<LogoutButton />} />
 
       <div className="flex flex-col items-center px-4 pt-6 text-center">
-        <Avatar name={profile.display_name} src={profile.avatar_url} size={88} />
+        <AvatarEditor name={profile.display_name} initialUrl={profile.avatar_url} />
         <h1 className="mt-3 text-xl font-bold text-slate-900">{profile.display_name}</h1>
         <p className="text-sm text-slate-400">{meta || "SST Connect"}</p>
 

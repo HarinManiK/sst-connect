@@ -38,7 +38,7 @@ export default async function PostDetailPage({
 
   if (!post) notFound();
 
-  const [{ data: myLike }, { data: comments }] = await Promise.all([
+  const [{ data: myLike }, { data: comments }, { data: me }] = await Promise.all([
     supabase
       .from("post_likes")
       .select("post_id")
@@ -53,6 +53,7 @@ export default async function PostDetailPage({
       .returns<
         { id: string; content: string; created_at: string; author: { display_name: string; avatar_url: string | null } | null }[]
       >(),
+    supabase.from("profiles").select("display_name, avatar_url").eq("id", user.id).single(),
   ]);
 
   const initialComments: CommentItem[] = (comments ?? []).map((c) => ({
@@ -85,7 +86,11 @@ export default async function PostDetailPage({
         disableCommentLink
       />
 
-      <CommentSection postId={postId} initialComments={initialComments} />
+      <CommentSection
+        postId={postId}
+        initialComments={initialComments}
+        me={{ name: me?.display_name ?? "You", avatar: me?.avatar_url ?? null }}
+      />
     </div>
   );
 }

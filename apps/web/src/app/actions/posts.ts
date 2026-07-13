@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getUserId } from "@/lib/supabase/auth";
 
 export async function createPost(content: string, imageUrl: string | null) {
   const supabase = await createClient();
@@ -23,17 +24,14 @@ export async function createPost(content: string, imageUrl: string | null) {
 
 export async function toggleLike(postId: string, currentlyLiked: boolean) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const userId = await getUserId(supabase);
+  if (!userId) throw new Error("Not authenticated");
 
+  // No revalidatePath: the UI updates optimistically, so we skip the
+  // full-page refetch that made liking feel laggy.
   if (currentlyLiked) {
-    await supabase.from("post_likes").delete().eq("post_id", postId).eq("profile_id", user.id);
+    await supabase.from("post_likes").delete().eq("post_id", postId).eq("profile_id", userId);
   } else {
-    await supabase.from("post_likes").insert({ post_id: postId, profile_id: user.id });
+    await supabase.from("post_likes").insert({ post_id: postId, profile_id: userId });
   }
-
-  revalidatePath("/feed");
-  revalidatePath(`/feed/${postId}`);
 }

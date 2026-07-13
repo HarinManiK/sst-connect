@@ -82,7 +82,9 @@ async function execute(
   switch (plan.intent) {
     case "stats": {
       const { data: stats } = await supabase.rpc("ai_stats");
-      return { result: stats ?? {}, people: [], posts: [] };
+      const s = (stats ?? {}) as Record<string, unknown>;
+      delete s.by_intent; // the app has no dating/friends flag anymore
+      return { result: s, people: [], posts: [] };
     }
 
     case "count_people": {
@@ -105,7 +107,7 @@ async function execute(
       });
       const people: Person[] = (rows ?? []).map(personRow);
       return {
-        result: { count: people.length, people: people.map((p) => ({ id: p.id, name: p.name, batch: p.batch, branch: p.branch, intent: p.intent, interests: p.interests, bio: p.bio })) },
+        result: { count: people.length, people: people.map((p) => ({ id: p.id, name: p.name, batch: p.batch, branch: p.branch, interests: p.interests, bio: p.bio })) },
         people,
         posts: [],
       };
@@ -153,7 +155,7 @@ async function execute(
         result: target
           ? {
               found: true,
-              person: { id: target.id, name: target.name, batch: target.batch, branch: target.branch, intent: target.intent, interests: target.interests, bio: target.bio },
+              person: { id: target.id, name: target.name, batch: target.batch, branch: target.branch, interests: target.interests, bio: target.bio },
               recent_posts: posts.map((p) => ({ id: p.id, category: p.category, content: p.content })),
             }
           : { found: false },
@@ -192,6 +194,8 @@ function phraserSystem(meName: string, meId: string) {
   return `You are Copilot, the warm, sharp AI of SST Connect (a social + dating app for Scaler School of Technology students). You are talking to ${meName}.
 
 You are given the user's question and DATA — the real, exact result of a database query for that question. Answer using ONLY this DATA. The numbers are authoritative; never change or invent them. If DATA is empty or says found:false, say so honestly (e.g. nobody matches yet, or it's early days). Keep it short, specific, and friendly. Plain text only.
+
+Only state what the user asked for. Do NOT volunteer extra attributes they didn't ask about, and NEVER mention dating/relationship/"friends vs dating" preferences or intent — the app has no such setting.
 
 The current user's id is "${meId}" — if they appear in results, refer to them as "you", and never recommend them to themselves.
 
