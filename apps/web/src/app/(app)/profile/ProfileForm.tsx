@@ -1,17 +1,18 @@
 "use client";
 
 import { useActionState } from "react";
-import { updateProfile, type ProfileFormState } from "@/app/actions/profile";
+import { updateProfile, PROGRAMS, HOSTELS, type ProfileFormState } from "@/app/actions/profile";
+import { Button } from "@/components/Button";
 
 type Profile = {
   display_name: string;
   bio: string | null;
   branch: string | null;
   hostel_block: string | null;
-  intent: string;
-  batch: number | null;
-  is_verified: boolean;
 };
+
+const inputClass =
+  "mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100";
 
 export function ProfileForm({ profile }: { profile: Profile }) {
   const [state, formAction, pending] = useActionState<ProfileFormState, FormData>(
@@ -20,14 +21,10 @@ export function ProfileForm({ profile }: { profile: Profile }) {
   );
 
   return (
-    <form action={formAction} className="flex flex-col gap-3">
+    <form action={formAction} className="flex flex-col gap-4">
       <div>
         <label className="text-sm font-medium text-slate-700">Name</label>
-        <input
-          name="displayName"
-          defaultValue={profile.display_name}
-          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-        />
+        <input name="displayName" defaultValue={profile.display_name} className={inputClass} />
       </div>
 
       <div>
@@ -35,70 +32,46 @@ export function ProfileForm({ profile }: { profile: Profile }) {
         <textarea
           name="bio"
           defaultValue={profile.bio ?? ""}
-          rows={2}
-          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          rows={3}
+          placeholder="Tell people a bit about yourself…"
+          className={`${inputClass} resize-none`}
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="text-sm font-medium text-slate-700">Branch</label>
-          <input
-            name="branch"
-            defaultValue={profile.branch ?? ""}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="text-sm font-medium text-slate-700">Hostel block</label>
-          <input
-            name="hostelBlock"
-            defaultValue={profile.hostel_block ?? ""}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-        </div>
-      </div>
-
-      {!profile.is_verified && (
-        <div>
-          <label className="text-sm font-medium text-slate-700">Batch (self-reported)</label>
-          <input
-            name="batch"
-            type="number"
-            min={1}
-            defaultValue={profile.batch ?? ""}
-            placeholder="e.g. 4"
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-          <p className="mt-1 text-xs text-slate-400">
-            Overwritten automatically once you link your Scaler email.
-          </p>
-        </div>
-      )}
-
       <div>
-        <label className="text-sm font-medium text-slate-700">Looking for</label>
-        <select
-          name="intent"
-          defaultValue={profile.intent}
-          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-        >
-          <option value="friends">Friends</option>
-          <option value="dating">Dating</option>
-          <option value="either">Either</option>
+        <label className="text-sm font-medium text-slate-700">Program</label>
+        <select name="program" defaultValue={profile.branch ?? ""} className={inputClass}>
+          <option value="" disabled>
+            Select your program
+          </option>
+          {PROGRAMS.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
         </select>
       </div>
 
-      {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
-      {state?.success && <p className="text-sm text-green-600">{state.success}</p>}
+      <div>
+        <label className="text-sm font-medium text-slate-700">Hostel</label>
+        <select name="hostel" defaultValue={profile.hostel_block ?? ""} className={inputClass}>
+          <option value="" disabled>
+            Select your hostel
+          </option>
+          {HOSTELS.map((h) => (
+            <option key={h} value={h}>
+              {h}
+            </option>
+          ))}
+        </select>
+      </div>
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="mt-1 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-      >
-        {pending ? "Saving..." : "Save changes"}
-      </button>
+      {state?.error && <p className="text-sm text-rose-600">{state.error}</p>}
+      {state?.success && <p className="text-sm text-emerald-600">{state.success}</p>}
+
+      <Button type="submit" disabled={pending} className="self-start">
+        {pending ? "Saving…" : "Save changes"}
+      </Button>
     </form>
   );
 }

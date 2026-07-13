@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { setInterests } from "@/app/actions/profile";
+import { setInterest } from "@/app/actions/profile";
 
+// One tap toggles a single interest: local state flips instantly
+// (optimistic) and the server syncs that one row. No more flaky deselect.
 export function InterestPicker({
   allInterests,
   initialSelected,
@@ -10,15 +12,20 @@ export function InterestPicker({
   allInterests: { id: string; name: string }[];
   initialSelected: string[];
 }) {
-  const [selected, setSelected] = useState(new Set(initialSelected));
-  const [pending, startTransition] = useTransition();
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelected));
+  const [, startTransition] = useTransition();
 
   function toggle(id: string) {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelected(next);
-    startTransition(() => setInterests(Array.from(next)));
+    const on = !selected.has(id);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    startTransition(() => {
+      setInterest(id, on);
+    });
   }
 
   return (
@@ -29,12 +36,11 @@ export function InterestPicker({
           <button
             key={interest.id}
             type="button"
-            disabled={pending}
             onClick={() => toggle(interest.id)}
-            className={`rounded-full border px-3 py-1 text-sm transition ${
+            className={`tap rounded-full border px-3 py-1.5 text-sm font-medium ${
               active
                 ? "border-brand-600 bg-brand-600 text-white"
-                : "border-slate-300 text-slate-600 hover:border-brand-300"
+                : "border-border bg-surface text-slate-600"
             }`}
           >
             {interest.name}

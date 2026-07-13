@@ -6,8 +6,11 @@ import { createClient } from "@/lib/supabase/server";
 
 export type ProfileFormState = { error?: string; success?: string } | undefined;
 
+export const PROGRAMS = ["CS & AI", "AI & Business"] as const;
+export const HOSTELS = ["Uniworld 1 (Neeladri)", "Uniworld 2 (Velankini)"] as const;
+
 export async function updateProfile(
-  _prevState: ProfileFormState,
+  _prev: ProfileFormState,
   formData: FormData
 ): Promise<ProfileFormState> {
   const supabase = await createClient();
@@ -18,22 +21,18 @@ export async function updateProfile(
 
   const displayName = String(formData.get("displayName") ?? "").trim();
   const bio = String(formData.get("bio") ?? "").trim();
-  const branch = String(formData.get("branch") ?? "").trim();
-  const hostelBlock = String(formData.get("hostelBlock") ?? "").trim();
-  const intent = String(formData.get("intent") ?? "either");
-  const batchRaw = String(formData.get("batch") ?? "").trim();
+  const program = String(formData.get("program") ?? "").trim();
+  const hostel = String(formData.get("hostel") ?? "").trim();
+
+  if (!displayName) return { error: "Name can't be empty." };
 
   const { error } = await supabase
     .from("profiles")
     .update({
-      display_name: displayName || undefined,
+      display_name: displayName,
       bio: bio || null,
-      branch: branch || null,
-      hostel_block: hostelBlock || null,
-      intent,
-      // self-reported batch only applies while no college email has set it;
-      // the parse_college_email trigger always takes precedence once linked.
-      ...(batchRaw ? { batch: Number(batchRaw) } : {}),
+      branch: PROGRAMS.includes(program as (typeof PROGRAMS)[number]) ? program : null,
+      hostel_block: HOSTELS.includes(hostel as (typeof HOSTELS)[number]) ? hostel : null,
     })
     .eq("id", user.id);
 
@@ -44,7 +43,7 @@ export async function updateProfile(
 }
 
 export async function linkCollegeEmail(
-  _prevState: ProfileFormState,
+  _prev: ProfileFormState,
   formData: FormData
 ): Promise<ProfileFormState> {
   const email = String(formData.get("collegeEmail") ?? "").trim().toLowerCase();
@@ -61,23 +60,31 @@ export async function linkCollegeEmail(
   );
 
   if (error) return { error: error.message };
-
   return { success: "Check your Scaler inbox for a confirmation link." };
 }
 
-export async function setInterests(interestIds: string[]) {
+// Single-row toggle -- reliable one-tap select/deselect, no full rewrite of
+// the interest set (which caused the flaky deselect).
+export async function setInterest(interestId: string, on: boolean) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  await supabase.from("profile_interests").delete().eq("profile_id", user.id);
-
-  if (interestIds.length > 0) {
+  if (on) {
     await supabase
       .from("profile_interests")
-      .insert(interestIds.map((interest_id) => ({ profile_id: user.id, interest_id })));
+      .upsert(
+        { profile_id: user.id, interest_id: interestId },
+        { onConflict: "profile_id,interest_id", ignoreDuplicates: true }
+      );
+  } else {
+    await supabase
+      .from("profile_interests")
+      .delete()
+      .eq("profile_id", user.id)
+      .eq("interest_id", interestId);
   }
 
   revalidatePath("/profile");
