@@ -3,11 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { PROGRAMS, HOSTELS } from "@/lib/profile-options";
 
 export type ProfileFormState = { error?: string; success?: string } | undefined;
-
-export const PROGRAMS = ["CS & AI", "AI & Business"] as const;
-export const HOSTELS = ["Uniworld 1 (Neeladri)", "Uniworld 2 (Velankini)"] as const;
 
 export async function updateProfile(
   _prev: ProfileFormState,

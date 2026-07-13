@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { updateProfile, PROGRAMS, HOSTELS, type ProfileFormState } from "@/app/actions/profile";
+import { updateProfile, type ProfileFormState } from "@/app/actions/profile";
+import { PROGRAMS, HOSTELS } from "@/lib/profile-options";
 import { Button } from "@/components/Button";
 
 type Profile = {
