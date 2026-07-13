@@ -1,285 +1,177 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { chatWithFallback, extractJson } from "./client";
-import { AppData, type Person, type Post } from "./data";
 
-export type CopilotResult = {
-  text: string;
-  people: Person[];
-  posts: Post[];
+export type CopilotPerson = {
+  id: string;
+  name: string;
+  avatar_url: string | null;
+  batch: number | null;
+  branch: string | null;
+  bio: string | null;
+  interests: string[];
 };
+export type CopilotPost = {
+  id: string;
+  author_name: string;
+  author_avatar: string | null;
+  content: string | null;
+  image_url: string | null;
+  category: string;
+  likes: number;
+  comments: number;
+  created_at: string;
+};
+export type CopilotResult = { text: string; people: CopilotPerson[]; posts: CopilotPost[] };
 
-// ── Step 1: PLAN. Turn the question into ONE structured query spec. ──────
-const PLANNER = `You convert a user's question to SST Connect's Copilot into a single JSON query plan. SST Connect is a social + dating app for students of Scaler School of Technology (SST). Students have: batch (1-4; 4 = newest 2026 intake), branch, bio, interest tags, and an intent ("friends", "dating", or "either"). There are also public posts with a category ("hot", "tech", "culture", "general").
+function sqlWriterSystem(meId: string, meName: string) {
+  return `You are the query engine for "SST Connect", a social + dating app for students of Scaler School of Technology (SST). Turn the user's question into ONE read-only Postgres SELECT over the schema below. It will be executed and you'll phrase the answer in a later step.
 
-Output ONLY a JSON object (no prose, no fences) with this shape:
+Schema (public):
+- profiles(id uuid, display_name text, avatar_url text, batch int [1-4; 4 = newest 2026 intake; may be null], branch text ["CS & AI" or "AI & Business"; this is the "program"], hostel_block text ["Uniworld 1 (Neeladri)" or "Uniworld 2 (Velankini)"], bio text, discoverable boolean, deleted_at timestamptz, created_at timestamptz)
+- interests(id uuid, name text)
+- profile_interests(profile_id uuid, interest_id uuid)
+- posts(id uuid, author_id uuid -> profiles.id, content text, image_url text, category text, deleted_at timestamptz, created_at timestamptz)
+- post_likes(post_id uuid, profile_id uuid, created_at timestamptz)
+- post_comments(id uuid, post_id uuid, author_id uuid -> profiles.id, content text, created_at timestamptz)
+- friendships(id uuid, requester_id uuid, addressee_id uuid, status text ["pending","accepted","declined"], created_at timestamptz)
+(Private direct messages exist but are OFF-LIMITS — never reference them.)
+
+The current user: id = '${meId}', name = '${meName}'.
+
+Rules:
+- Always exclude deleted rows (profiles.deleted_at is null, posts.deleted_at is null).
+- When finding/listing PEOPLE, also require profiles.discoverable = true and exclude the current user (profiles.id <> '${meId}') unless the question is explicitly about themselves.
+- Use ILIKE '%term%' for fuzzy name/interest/text matching.
+- Add a LIMIT (<= 20) to list queries. Use count()/aggregates for "how many".
+- Never write anything but a single SELECT.
+
+Keep the entire SQL on ONE line with no line breaks inside it, so the JSON stays valid.
+
+Respond with ONLY a JSON object (no markdown fences):
 {
-  "intent": "stats" | "count_people" | "list_people" | "list_posts" | "person" | "my_stats" | "chat",
-  "people": { "batch": <1-4|null>, "interests": [<keywords>]|null, "text": <string|null> },
-  "posts": { "text": <string|null>, "author": <name|null>, "since_days": <int|null> },
-  "name": <person name if the question is about one specific person, else null>,
-  "limit": <int|null>
+  "sql": "<one SELECT statement, or null if the question is just a greeting/help>",
+  "show": "people" | "posts" | null,
+  "answer": "<a direct reply, ONLY when sql is null>"
 }
 
-Match people by their interests, bio, program, and batch (via the "interests" and free "text" fields) — there is no dating/friends flag. For "find me someone who <does X / is into X>", put X into interests or text.
-
-Pick the intent:
-- "stats": totals / "how many people" (no specific filter) / breakdowns / most popular interests.
-- "count_people": "how many people who <filter>" (a count WITH filters).
-- "list_people": find/show/who are the people matching something (returns people to display).
-- "list_posts": posts / feed / "what's happening" / trends / what someone posted.
-- "person": a question about ONE named person ("tell me about Ravi", "is Ananya into music").
-- "my_stats": about the user THEMSELVES ("how many friends do I have", "how's my profile").
-- "chat": greetings/help/anything needing no data.
-
-Fill only the relevant filter fields; use null for the rest. Keep interest/text keywords short and normalized.`;
-
-// ── Step 2: EXECUTE against Postgres (exact, scalable). ──────────────────
-type Plan = {
-  intent: string;
-  people?: { batch?: number | null; interests?: string[] | null; text?: string | null };
-  posts?: { category?: string | null; text?: string | null; author?: string | null; since_days?: number | null };
-  name?: string | null;
-  limit?: number | null;
-};
-
-function personRow(r: any): Person {
-  return {
-    id: r.id,
-    name: r.name,
-    avatar_url: r.avatar_url ?? null,
-    batch: r.batch,
-    branch: r.branch,
-    bio: r.bio,
-    intent: r.intent,
-    interests: r.interests ?? [],
-  };
+If show = "people": the SELECT must return columns exactly named: id, display_name, avatar_url, batch, branch, bio, and interests (use array_agg of interest names, or NULL). GROUP BY the profile columns.
+If show = "posts": return columns named: id, author_name, author_avatar, content, image_url, category, created_at, likes (count of post_likes), comments (count of post_comments).`;
 }
 
-function postRow(r: any): Post {
-  return {
-    id: r.id,
-    author_id: r.author_id,
-    author_name: r.author_name,
-    author_avatar: r.author_avatar,
-    content: r.content,
-    image_url: r.image_url,
-    category: r.category,
-    likes: Number(r.likes ?? 0),
-    comments: Number(r.comments ?? 0),
-    created_at: r.created_at,
-  };
+const PHRASER = `You are Copilot, the warm, sharp AI of SST Connect (a social + dating app for Scaler School of Technology students). You are given the user's question and RESULT — the real rows returned from the database for that question.
+
+- Answer using ONLY the RESULT. Every bit of it is public within the app, so share it freely, INCLUDING names. You must NEVER refuse to share names or details, and never say "I can't share that" — that's wrong here.
+- If RESULT is empty, say so honestly (nothing matches yet / early days).
+- The numbers/rows are authoritative; never invent or change them.
+- If people/post cards will be shown alongside, keep your text short and don't re-list them.
+- Plain text only. Never mention SQL, databases, "deleted"/"discoverable" flags, or any dating/relationship "intent" (no such setting exists). Only answer what was asked.`;
+
+function toPeople(rows: any[], meId: string): CopilotPerson[] {
+  return rows
+    .filter((r) => r && typeof r.id === "string" && r.id !== meId && (r.display_name || r.name))
+    .map((r) => ({
+      id: r.id,
+      name: r.display_name ?? r.name,
+      avatar_url: r.avatar_url ?? null,
+      batch: r.batch ?? null,
+      branch: r.branch ?? null,
+      bio: r.bio ?? null,
+      interests: Array.isArray(r.interests) ? r.interests.filter(Boolean) : [],
+    }));
 }
 
-async function execute(
-  supabase: SupabaseClient,
-  data: AppData,
-  plan: Plan
-): Promise<{ result: any; people: Person[]; posts: Post[] }> {
-  const pf = plan.people ?? {};
-  const limit = Math.min(Math.max(plan.limit ?? 15, 1), 30);
-
-  switch (plan.intent) {
-    case "stats": {
-      const { data: stats } = await supabase.rpc("ai_stats");
-      const s = (stats ?? {}) as Record<string, unknown>;
-      delete s.by_intent; // the app has no dating/friends flag anymore
-      return { result: s, people: [], posts: [] };
-    }
-
-    case "count_people": {
-      const { data: count } = await supabase.rpc("ai_count_people", {
-        p_batch: pf.batch ?? null,
-        p_intent: null,
-        p_interests: pf.interests?.length ? pf.interests : null,
-        p_text: pf.text ?? null,
-      });
-      return { result: { count: Number(count ?? 0) }, people: [], posts: [] };
-    }
-
-    case "list_people": {
-      const { data: rows } = await supabase.rpc("ai_search_people", {
-        p_batch: pf.batch ?? null,
-        p_intent: null,
-        p_interests: pf.interests?.length ? pf.interests : null,
-        p_text: pf.text ?? null,
-        p_limit: limit,
-      });
-      const people: Person[] = (rows ?? []).map(personRow);
-      return {
-        result: { count: people.length, people: people.map((p) => ({ id: p.id, name: p.name, batch: p.batch, branch: p.branch, interests: p.interests, bio: p.bio })) },
-        people,
-        posts: [],
-      };
-    }
-
-    case "list_posts": {
-      const po = plan.posts ?? {};
-      const { data: rows } = await supabase.rpc("ai_search_posts", {
-        p_category: po.category ?? null,
-        p_text: po.text ?? null,
-        p_author: po.author ?? null,
-        p_since_days: po.since_days ?? null,
-        p_limit: limit,
-      });
-      const posts: Post[] = (rows ?? []).map(postRow);
-      return {
-        result: { count: posts.length, posts: posts.map((p) => ({ id: p.id, author: p.author_name, category: p.category, likes: p.likes, comments: p.comments, content: p.content })) },
-        people: [],
-        posts,
-      };
-    }
-
-    case "person": {
-      const { data: rows } = await supabase.rpc("ai_search_people", {
-        p_batch: null,
-        p_intent: null,
-        p_interests: null,
-        p_text: plan.name ?? pf.text ?? null,
-        p_limit: 3,
-      });
-      const people: Person[] = (rows ?? []).map(personRow);
-      const target = people[0];
-      let posts: Post[] = [];
-      if (target) {
-        const { data: postRows } = await supabase.rpc("ai_search_posts", {
-          p_category: null,
-          p_text: null,
-          p_author: target.name,
-          p_since_days: null,
-          p_limit: 5,
-        });
-        posts = (postRows ?? []).map(postRow) as Post[];
-      }
-      return {
-        result: target
-          ? {
-              found: true,
-              person: { id: target.id, name: target.name, batch: target.batch, branch: target.branch, interests: target.interests, bio: target.bio },
-              recent_posts: posts.map((p) => ({ id: p.id, category: p.category, content: p.content })),
-            }
-          : { found: false },
-        people: target ? [target] : [],
-        posts,
-      };
-    }
-
-    case "my_stats": {
-      const [activity, connections, me] = await Promise.all([
-        data.myActivity(),
-        data.myConnections(),
-        data.me(),
-      ]);
-      return {
-        result: {
-          ...activity,
-          ...connections,
-          my_batch: me?.batch ?? null,
-          my_intent: me?.intent ?? null,
-          my_interests: me?.interests ?? [],
-          my_bio: me?.bio ?? null,
-        },
-        people: [],
-        posts: [],
-      };
-    }
-
-    default:
-      return { result: { note: "no data lookup needed" }, people: [], posts: [] };
-  }
+function toPosts(rows: any[]): CopilotPost[] {
+  return rows
+    .filter((r) => r && typeof r.id === "string")
+    .map((r) => ({
+      id: r.id,
+      author_name: r.author_name ?? "Unknown",
+      author_avatar: r.author_avatar ?? null,
+      content: r.content ?? null,
+      image_url: r.image_url ?? null,
+      category: r.category ?? "general",
+      likes: Number(r.likes ?? 0),
+      comments: Number(r.comments ?? 0),
+      created_at: r.created_at ?? new Date().toISOString(),
+    }));
 }
 
-// ── Step 3: PHRASE. Turn the real result into a natural answer. ──────────
-function phraserSystem(meName: string, meId: string) {
-  return `You are Copilot, the warm, sharp AI of SST Connect (a social + dating app for Scaler School of Technology students). You are talking to ${meName}.
-
-You are given the user's question and DATA — the real, exact result of a database query for that question. Answer using ONLY this DATA. The numbers are authoritative; never change or invent them. If DATA is empty or says found:false, say so honestly (e.g. nobody matches yet, or it's early days). Keep it short, specific, and friendly. Plain text only.
-
-Only state what the user asked for. Do NOT volunteer extra attributes they didn't ask about, and NEVER mention dating/relationship/"friends vs dating" preferences or intent — the app has no such setting.
-
-The current user's id is "${meId}" — if they appear in results, refer to them as "you", and never recommend them to themselves.
-
-To show tappable cards for specific people or posts in the DATA, end your reply with these lines (only if useful), using the real ids from DATA:
-@@people: id1, id2
-@@posts: id3
-Never mention ids or these lines in your prose.`;
-}
-
-function parseCards(raw: string, people: Person[], posts: Post[]) {
-  const pMap = new Map(people.map((p) => [p.id, p]));
-  const qMap = new Map(posts.map((p) => [p.id, p]));
-  const outP: Person[] = [];
-  const outQ: Post[] = [];
-
-  let text = raw.replace(/@@people:\s*([^\n]+)/gi, (_m, ids: string) => {
-    for (const id of ids.split(",")) {
-      const p = pMap.get(id.trim());
-      if (p && !outP.includes(p)) outP.push(p);
-    }
-    return "";
-  });
-  text = text.replace(/@@posts:\s*([^\n]+)/gi, (_m, ids: string) => {
-    for (const id of ids.split(",")) {
-      const p = qMap.get(id.trim());
-      if (p && !outQ.includes(p)) outQ.push(p);
-    }
-    return "";
-  });
-
-  return { text: text.trim(), people: outP, posts: outQ };
-}
+type Plan = { sql?: string | null; show?: "people" | "posts" | null; answer?: string | null };
 
 export async function runCopilot(
   supabase: SupabaseClient,
   meId: string,
   history: { role: "user" | "assistant"; content: string }[]
 ): Promise<CopilotResult> {
-  const data = new AppData(supabase, meId);
   const question = history[history.length - 1]?.content ?? "";
   const priorContext = history
     .slice(-5, -1)
     .map((m) => `${m.role === "user" ? "User" : "Copilot"}: ${m.content}`)
     .join("\n");
 
-  // Step 1 — plan
-  const planCompletion = await chatWithFallback({
-    messages: [
-      { role: "system", content: PLANNER },
-      {
-        role: "user",
-        content: `${priorContext ? `Conversation so far:\n${priorContext}\n\n` : ""}Question: ${question}`,
-      },
-    ] as any,
-    max_tokens: 300,
-    temperature: 0,
-  });
-  const plan = extractJson<Plan>(planCompletion.choices[0]?.message?.content ?? "") ?? {
-    intent: "chat",
+  const { data: meRow } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("id", meId)
+    .maybeSingle();
+  const meName = meRow?.display_name ?? "there";
+
+  const askForPlan = async (extra = "") => {
+    const completion = await chatWithFallback({
+      messages: [
+        { role: "system", content: sqlWriterSystem(meId, meName) },
+        {
+          role: "user",
+          content: `${priorContext ? `Conversation so far:\n${priorContext}\n\n` : ""}Question: ${question}${extra}`,
+        },
+      ] as any,
+      max_tokens: 500,
+      temperature: 0,
+    });
+    return extractJson<Plan>(completion.choices[0]?.message?.content ?? "") ?? {};
   };
 
-  // Step 2 — execute against Postgres
-  const { result, people, posts } = await execute(supabase, data, plan);
+  let plan = await askForPlan();
 
-  // Step 3 — phrase the real result
-  const me = await data.me();
-  const phraseCompletion = await chatWithFallback({
+  // Greeting / help — no query needed.
+  if (!plan.sql && plan.answer) {
+    return { text: String(plan.answer).trim(), people: [], posts: [] };
+  }
+
+  // Run the query, with one self-correction attempt if the SQL errors.
+  let rows: any[] = [];
+  let sql = plan.sql ?? null;
+  for (let attempt = 0; attempt < 2 && sql; attempt++) {
+    const { data, error } = await supabase.rpc("ai_sql", { q: sql });
+    if (!error) {
+      rows = Array.isArray(data) ? data : [];
+      break;
+    }
+    if (attempt === 0) {
+      plan = await askForPlan(
+        `\n\n(Your previous SQL failed: ${error.message}. Return corrected JSON.)`
+      );
+      sql = plan.sql ?? null;
+    }
+  }
+
+  const show = plan.show ?? null;
+  const people = show === "people" ? toPeople(rows, meId) : [];
+  const posts = show === "posts" ? toPosts(rows) : [];
+
+  const phrase = await chatWithFallback({
     messages: [
-      { role: "system", content: phraserSystem(me?.name ?? "there", meId) },
+      { role: "system", content: PHRASER },
       {
         role: "user",
-        content: `${priorContext ? `Conversation so far:\n${priorContext}\n\n` : ""}Question: ${question}\n\nDATA:\n${JSON.stringify(result)}`,
+        content: `${priorContext ? `Conversation so far:\n${priorContext}\n\n` : ""}Question: ${question}\n\nRESULT (${rows.length} rows):\n${JSON.stringify(rows).slice(0, 6000)}`,
       },
     ] as any,
     max_tokens: 600,
     temperature: 0.3,
   });
 
-  const raw = phraseCompletion.choices[0]?.message?.content ?? "";
-  const parsed = parseCards(raw, people, posts);
-
-  return {
-    text: parsed.text || "Hmm, try asking that a different way?",
-    people: parsed.people,
-    posts: parsed.posts,
-  };
+  const text = (phrase.choices[0]?.message?.content ?? "").trim();
+  return { text: text || "Hmm, try asking that a different way?", people, posts };
 }
