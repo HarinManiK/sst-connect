@@ -148,11 +148,16 @@ export async function runCopilot(
       rows = Array.isArray(data) ? data : [];
       break;
     }
-    if (attempt === 0) {
+    // Only spend a call re-writing the SQL when the error is actually a
+    // fixable query problem -- not a missing function (migration not run)
+    // or a permission block, which re-writing can't solve.
+    if (attempt === 0 && !/does not exist|permission denied|not accessible/i.test(error.message)) {
       plan = await askForPlan(
         `\n\n(Your previous SQL failed: ${error.message}. Return corrected JSON.)`
       );
       sql = plan.sql ?? null;
+    } else {
+      break;
     }
   }
 

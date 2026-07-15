@@ -27,10 +27,18 @@ export async function POST(request: Request) {
   try {
     const result = await runCopilot(supabase, user.id, cleaned);
     return NextResponse.json(result);
-  } catch {
+  } catch (e) {
+    // Surfaces the real cause in the Vercel function logs for this project.
+    console.error("[copilot] failed:", e);
+    const status = (e as { status?: number })?.status;
+    const rateLimited = status === 429;
     return NextResponse.json(
-      { error: "Copilot is busy right now, try again in a moment." },
-      { status: 503 }
+      {
+        error: rateLimited
+          ? "Copilot's hit its rate limit for the moment — wait a few seconds and try again."
+          : "Copilot ran into a problem. Try again in a moment.",
+      },
+      { status: rateLimited ? 429 : 503 }
     );
   }
 }
