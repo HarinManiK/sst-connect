@@ -13,9 +13,13 @@ export const ai = new OpenAI({
 // whole list from the environment without a code change, e.g.
 //   GEMINI_MODELS=gemini-3-flash,gemini-2.5-flash,gemini-2.5-flash-lite
 // Check Google AI Studio for the exact model names available to your key.
+// NOTE: the "-latest" aliases are the ones actually served over the
+// OpenAI-compatible endpoint with free-tier quota. The versioned ids like
+// gemini-2.5-flash 404 here, and gemini-2.0-flash has zero free quota on
+// some projects. These aliases also auto-track Google's current model, so
+// they won't break when a version is retired.
 export const AI_MODELS = (
-  process.env.GEMINI_MODELS ??
-  "gemini-2.0-flash,gemini-2.5-flash,gemini-flash-latest,gemini-2.5-flash-lite,gemini-1.5-flash"
+  process.env.GEMINI_MODELS ?? "gemini-flash-latest,gemini-flash-lite-latest"
 )
   .split(",")
   .map((m) => m.trim())

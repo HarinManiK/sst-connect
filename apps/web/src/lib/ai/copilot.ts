@@ -126,7 +126,10 @@ export async function runCopilot(
           content: `${priorContext ? `Conversation so far:\n${priorContext}\n\n` : ""}Question: ${question}${extra}`,
         },
       ] as any,
-      max_tokens: 500,
+      // Generous budget: these are "thinking" models that spend tokens on
+      // internal reasoning before emitting the JSON, so a low cap yields
+      // empty output.
+      max_tokens: 1500,
       temperature: 0,
     });
     return extractJson<Plan>(completion.choices[0]?.message?.content ?? "") ?? {};
@@ -173,7 +176,7 @@ export async function runCopilot(
         content: `${priorContext ? `Conversation so far:\n${priorContext}\n\n` : ""}Question: ${question}\n\nRESULT (${rows.length} rows):\n${JSON.stringify(rows).slice(0, 6000)}`,
       },
     ] as any,
-    max_tokens: 600,
+    max_tokens: 1500,
     temperature: 0.3,
   });
 
