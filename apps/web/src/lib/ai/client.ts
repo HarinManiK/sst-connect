@@ -15,7 +15,7 @@ export const ai = new OpenAI({
 // Check Google AI Studio for the exact model names available to your key.
 export const AI_MODELS = (
   process.env.GEMINI_MODELS ??
-  "gemini-2.5-flash,gemini-2.0-flash,gemini-2.5-flash-lite"
+  "gemini-2.0-flash,gemini-2.5-flash,gemini-flash-latest,gemini-2.5-flash-lite,gemini-1.5-flash"
 )
   .split(",")
   .map((m) => m.trim())
@@ -28,9 +28,14 @@ type CompletionArgs = Omit<
 
 function isRetryable(err: unknown): boolean {
   const status = (err as { status?: number })?.status;
-  // 429 = rate limited, 5xx = transient server errors -> try the next model.
-  // 4xx (bad request, auth) would fail identically on every model, so bail.
-  return status === 429 || (typeof status === "number" && status >= 500);
+  // 404 = this model name doesn't exist for the key (retired/renamed) -> try
+  // the next one. 429 = rate limited. 5xx = transient. All should fall
+  // through to the next model rather than kill the whole request.
+  return (
+    status === 404 ||
+    status === 429 ||
+    (typeof status === "number" && status >= 500)
+  );
 }
 
 // Runs a chat completion against the fallback chain. Throws only if every
